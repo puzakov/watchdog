@@ -9,15 +9,7 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-func NewHandler(store service.Storage) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/update/", func(w http.ResponseWriter, r *http.Request) {
-		handleUpdate(store, w, r)
-	})
-	return mux
-}
-
-func handleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request) {
+func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
