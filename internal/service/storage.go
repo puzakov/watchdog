@@ -26,3 +26,15 @@ func (s *MemStorage) UpdateGauge(name string, value float64) {
 func (s *MemStorage) UpdateCounter(name string, delta int64) {
 	s.counters[name] += delta
 }
+
+func (s *MemStorage) Snapshot() (map[string]float64, map[string]int64) {
+	g := make(map[string]float64, len(s.gauges))
+	for k, v := range s.gauges {
+		g[k] = v
+	}
+	c := make(map[string]int64, len(s.counters))
+	for k, v := range s.counters {
+		c[k] = v
+	}
+	return g, c
+}
