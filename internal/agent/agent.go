@@ -58,51 +58,56 @@ func New(cfg Config) *Agent {
 	}
 }
 
-// Run запускает бесконечные циклы:
-// - poll: обновление runtime-метрик + PollCount + RandomValue
-// - report: отправка всех накопленных метрик на сервер
 func (a *Agent) Run() {
-	go a.pollLoop()
-	a.reportLoop()
-}
+	var lastPoll time.Time
+	var lastReport time.Time
 
-func (a *Agent) pollLoop() {
 	for {
-		gauges := ReadRuntimeGauges()
-		for name, v := range gauges {
-			a.store.UpdateGauge(name, v)
+		now := time.Now()
+
+		if lastPoll.IsZero() || now.Sub(lastPoll) >= a.cfg.PollInterval {
+			a.pollOnce()
+			lastPoll = now
 		}
 
-		a.store.UpdateGauge("RandomValue", rand.Float64())
-		a.store.UpdateCounter("PollCount", 1)
+		if lastReport.IsZero() || now.Sub(lastReport) >= a.cfg.ReportInterval {
+			a.reportOnce()
+			lastReport = now
+		}
 
-		time.Sleep(a.cfg.PollInterval)
+		time.Sleep(1 * time.Second)
 	}
 }
 
-func (a *Agent) reportLoop() {
-	for {
-		gauges, counters := a.store.Snapshot()
+func (a *Agent) pollOnce() {
+	gauges := ReadRuntimeGauges()
+	for name, v := range gauges {
+		a.store.UpdateGauge(name, v)
+	}
 
-		for name, v := range gauges {
-			if err := a.sender.SendGauge(name, v); err != nil {
-				a.cfg.Logger.Printf("send gauge %s: %v", name, err)
-			}
+	a.store.UpdateGauge("RandomValue", rand.Float64())
+	a.store.UpdateCounter("PollCount", 1)
+}
+
+func (a *Agent) reportOnce() {
+	gauges, counters := a.store.Snapshot()
+
+	for name, v := range gauges {
+		if err := a.sender.SendGauge(name, v); err != nil {
+			a.cfg.Logger.Printf("send gauge %s: %v", name, err)
 		}
+	}
 
-		for name, current := range counters {
-			prev := a.lastReportedCounters[name]
-			delta := current - prev
-			if delta == 0 {
-				continue
-			}
-			if err := a.sender.SendCounter(name, delta); err != nil {
-				a.cfg.Logger.Printf("send counter %s: %v", name, err)
-				continue
-			}
-			a.lastReportedCounters[name] = current
+	for name, current := range counters {
+		prev := a.lastReportedCounters[name]
+		delta := current - prev
+		if delta == 0 {
+			continue
 		}
-
-		time.Sleep(a.cfg.ReportInterval)
+		if err := a.sender.SendCounter(name, delta); err != nil {
+			a.cfg.Logger.Printf("send counter %s: %v", name, err)
+			continue
+		}
+		a.lastReportedCounters[name] = current
 	}
 }
