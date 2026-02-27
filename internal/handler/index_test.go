@@ -18,6 +18,11 @@ func TestHandleIndex_ReturnsHTMLAndContainsMetrics(t *testing.T) {
 	HandleIndex(store, w)
 
 	resp := w.Result()
+	err := resp.Body.Close()
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
