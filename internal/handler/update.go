@@ -3,7 +3,6 @@ package handler
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/service"
@@ -17,11 +16,11 @@ type UpdateArgs struct {
 
 func HandleUpdate(args *UpdateArgs, store service.Storage, w http.ResponseWriter, r *http.Request) {
 
-	ct := r.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "text/plain") {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	//ct := r.Header.Get("Content-Type")
+	//if !strings.HasPrefix(ct, "text/plain") {
+	//	w.WriteHeader(http.StatusBadRequest)
+	//	return
+	//}
 
 	switch args.mType {
 	case models.Gauge:
