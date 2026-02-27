@@ -56,3 +56,21 @@ func TestNewHandler_GetRoot_ReturnsHTMLWithMetrics(t *testing.T) {
 		t.Fatalf("body does not contain counter metric, body:\n%s", body)
 	}
 }
+
+func TestNewHandler_RoutesToValue(t *testing.T) {
+	store := service.NewMemStorage()
+	store.UpdateGauge("Alloc", 1.5)
+
+	h := NewHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Alloc", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if got := w.Body.String(); got != "1.5" {
+		t.Fatalf("body = %q, want %q", got, "1.5")
+	}
+}
