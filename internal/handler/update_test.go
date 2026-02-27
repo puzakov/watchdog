@@ -8,37 +8,13 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-func TestHandleUpdate_MethodNotAllowed(t *testing.T) {
-	store := service.NewMemStorage()
-	req := httptest.NewRequest(http.MethodGet, "/update/gauge/Alloc/1", nil)
-	req.Header.Set("Content-Type", "text/plain")
-	w := httptest.NewRecorder()
-
-	HandleUpdate(store, w, req)
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
-	}
-}
-
-func TestHandleUpdate_BadPath_NotFound(t *testing.T) {
-	store := service.NewMemStorage()
-	req := httptest.NewRequest(http.MethodPost, "/bad/gauge/Alloc/1", nil)
-	req.Header.Set("Content-Type", "text/plain")
-	w := httptest.NewRecorder()
-
-	HandleUpdate(store, w, req)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
-	}
-}
-
 func TestHandleUpdate_BadContentType(t *testing.T) {
 	store := service.NewMemStorage()
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/1", nil)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	HandleUpdate(store, w, req)
+	HandleUpdate(&UpdateArgs{mType: "gauge", name: "Alloc", value: "1"}, store, w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
@@ -50,7 +26,7 @@ func TestHandleUpdate_UnknownType_BadRequest(t *testing.T) {
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
 
-	HandleUpdate(store, w, req)
+	HandleUpdate(&UpdateArgs{mType: "unknown", name: "Alloc", value: "1"}, store, w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
@@ -62,7 +38,7 @@ func TestHandleUpdate_Gauge_OK(t *testing.T) {
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
 
-	HandleUpdate(store, w, req)
+	HandleUpdate(&UpdateArgs{mType: "gauge", name: "Alloc", value: "1.5"}, store, w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -73,13 +49,25 @@ func TestHandleUpdate_Gauge_OK(t *testing.T) {
 	}
 }
 
+func TestHandleUpdate_Gauge_InvalidValue_BadRequest(t *testing.T) {
+	store := service.NewMemStorage()
+	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/nope", nil)
+	req.Header.Set("Content-Type", "text/plain")
+	w := httptest.NewRecorder()
+
+	HandleUpdate(&UpdateArgs{mType: "gauge", name: "Alloc", value: "nope"}, store, w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
 func TestHandleUpdate_Counter_OK(t *testing.T) {
 	store := service.NewMemStorage()
 	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/10", nil)
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
 
-	HandleUpdate(store, w, req)
+	HandleUpdate(&UpdateArgs{mType: "counter", name: "PollCount", value: "10"}, store, w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
@@ -90,13 +78,13 @@ func TestHandleUpdate_Counter_OK(t *testing.T) {
 	}
 }
 
-func TestHandleUpdate_InvalidValue_BadRequest(t *testing.T) {
+func TestHandleUpdate_Counter_InvalidValue_BadRequest(t *testing.T) {
 	store := service.NewMemStorage()
-	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/not-a-number", nil)
+	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/nope", nil)
 	req.Header.Set("Content-Type", "text/plain")
 	w := httptest.NewRecorder()
 
-	HandleUpdate(store, w, req)
+	HandleUpdate(&UpdateArgs{mType: "counter", name: "PollCount", value: "nope"}, store, w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}

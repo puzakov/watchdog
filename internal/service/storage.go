@@ -1,8 +1,11 @@
 package service
 
 type Storage interface {
+	GetGauge(name string) (float64, bool)
+	GetCounter(name string) (int64, bool)
 	UpdateGauge(name string, value float64)
 	UpdateCounter(name string, delta int64)
+	Snapshot() (map[string]float64, map[string]int64)
 }
 
 type MemStorage struct {
@@ -17,6 +20,16 @@ func NewMemStorage() *MemStorage {
 		// Тип counter, int64 — новое значение должно добавляться к предыдущему, если какое-то значение уже было известно серверу.
 		counters: make(map[string]int64),
 	}
+}
+
+func (s *MemStorage) GetGauge(name string) (float64, bool) {
+	v, ok := s.gauges[name]
+	return v, ok
+}
+
+func (s *MemStorage) GetCounter(name string) (int64, bool) {
+	v, ok := s.counters[name]
+	return v, ok
 }
 
 func (s *MemStorage) UpdateGauge(name string, value float64) {

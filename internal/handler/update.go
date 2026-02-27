@@ -9,27 +9,13 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+type UpdateArgs struct {
+	mType string
+	name  string
+	value string
+}
 
-	parts := strings.Split(r.URL.Path, "/")
-	// ["", "update", "<type>", "<name>", "<value>"]
-	if len(parts) != 5 || parts[1] != "update" {
-		http.NotFound(w, r)
-		return
-	}
-
-	mType := parts[2]
-	name := parts[3]
-	value := parts[4]
-
-	if name == "" {
-		http.NotFound(w, r)
-		return
-	}
+func HandleUpdate(args *UpdateArgs, store service.Storage, w http.ResponseWriter, r *http.Request) {
 
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "text/plain") {
@@ -37,22 +23,22 @@ func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	switch mType {
+	switch args.mType {
 	case models.Gauge:
-		v, err := strconv.ParseFloat(value, 64)
+		v, err := strconv.ParseFloat(args.value, 64)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		store.UpdateGauge(name, v)
+		store.UpdateGauge(args.name, v)
 		w.WriteHeader(http.StatusOK)
 	case models.Counter:
-		delta, err := strconv.ParseInt(value, 10, 64)
+		delta, err := strconv.ParseInt(args.value, 10, 64)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		store.UpdateCounter(name, delta)
+		store.UpdateCounter(args.name, delta)
 		w.WriteHeader(http.StatusOK)
 	default:
 		w.WriteHeader(http.StatusBadRequest)
