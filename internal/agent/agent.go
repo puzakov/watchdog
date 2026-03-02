@@ -59,23 +59,22 @@ func New(cfg Config) *Agent {
 }
 
 func (a *Agent) Run() {
-	var lastPoll time.Time
-	var lastReport time.Time
+	pollTicker := time.NewTicker(a.cfg.PollInterval)
+	reportTicker := time.NewTicker(a.cfg.ReportInterval)
+	defer pollTicker.Stop()
+	defer reportTicker.Stop()
+
+	// Сохраняем прежнее поведение: сразу собираем и сразу отправляем.
+	a.pollOnce()
+	a.reportOnce()
 
 	for {
-		now := time.Now()
-
-		if lastPoll.IsZero() || now.Sub(lastPoll) >= a.cfg.PollInterval {
+		select {
+		case <-pollTicker.C:
 			a.pollOnce()
-			lastPoll = now
-		}
-
-		if lastReport.IsZero() || now.Sub(lastReport) >= a.cfg.ReportInterval {
+		case <-reportTicker.C:
 			a.reportOnce()
-			lastReport = now
 		}
-
-		time.Sleep(1 * time.Second)
 	}
 }
 
