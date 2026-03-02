@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,9 +18,10 @@ type UpdateArgs struct {
 func HandleUpdate(args *UpdateArgs, store service.Storage, w http.ResponseWriter, r *http.Request) {
 
 	ct := r.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "text/plain") {
-		// заглушил ошибку для прохождения автотестов
-		fmt.Printf("HandleUpdate Content-Type error. Expected 'text/plain' got '%s'", ct)
+	// Если заголовок задан и он не text/plain — это ошибка.
+	if ct != "" && !strings.HasPrefix(ct, "text/plain") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
 	switch args.mType {
