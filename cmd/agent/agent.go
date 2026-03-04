@@ -6,8 +6,15 @@ import (
 	"log"
 	"time"
 
+	"github.com/caarlos0/env/v6"
 	"github.com/puzakov/watchdog/internal/agent"
 )
+
+type EnvConfig struct {
+	addr           string `env:"ADDRESS"`
+	pollInterval   int    `env:"REPORT_INTERVAL"`
+	reportInterval int    `env:"POLL_INTERVAL"`
+}
 
 func main() {
 	var (
@@ -20,6 +27,22 @@ func main() {
 	flag.IntVar(&pollInterval, "p", 2, "poll interval in seconds")
 	flag.IntVar(&reportInterval, "r", 10, "report interval in seconds")
 	flag.Parse()
+
+	var cfg EnvConfig
+	err := env.Parse(&cfg)
+
+	if err != nil {
+		fmt.Printf("%w\n", err)
+	}
+
+	switch {
+	case cfg.addr != "":
+		addr = cfg.addr
+	case cfg.pollInterval != 0:
+		pollInterval = cfg.pollInterval
+	case cfg.reportInterval != 0:
+		reportInterval = cfg.reportInterval
+	}
 
 	a := agent.New(agent.Config{
 		ServerAddress:  fmt.Sprintf("http://%s", addr),
