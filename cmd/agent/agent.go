@@ -32,7 +32,7 @@ func main() {
 	err := env.Parse(&cfg)
 
 	if err != nil {
-		fmt.Printf("%w\n", err)
+		fmt.Println(err.Error())
 	}
 
 	switch {
