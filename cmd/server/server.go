@@ -11,7 +11,7 @@ import (
 )
 
 type EnvConfig struct {
-	addr string `env:"ADDRESS"`
+	Addr string `env:"ADDRESS"`
 }
 
 func main() {
@@ -27,8 +27,8 @@ func main() {
 		fmt.Println(err.Error())
 	}
 
-	if cfg.addr != "" {
-		addr = cfg.addr
+	if cfg.Addr != "" {
+		addr = cfg.Addr
 	}
 
 	storage := service.NewMemStorage()

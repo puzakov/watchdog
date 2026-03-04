@@ -11,9 +11,9 @@ import (
 )
 
 type EnvConfig struct {
-	addr           string `env:"ADDRESS"`
-	pollInterval   int    `env:"REPORT_INTERVAL"`
-	reportInterval int    `env:"POLL_INTERVAL"`
+	Addr           string `env:"ADDRESS"`
+	PollInterval   int    `env:"REPORT_INTERVAL"`
+	ReportInterval int    `env:"POLL_INTERVAL"`
 }
 
 func main() {
@@ -36,12 +36,12 @@ func main() {
 	}
 
 	switch {
-	case cfg.addr != "":
-		addr = cfg.addr
-	case cfg.pollInterval != 0:
-		pollInterval = cfg.pollInterval
-	case cfg.reportInterval != 0:
-		reportInterval = cfg.reportInterval
+	case cfg.Addr != "":
+		addr = cfg.Addr
+	case cfg.PollInterval != 0:
+		pollInterval = cfg.PollInterval
+	case cfg.ReportInterval != 0:
+		reportInterval = cfg.ReportInterval
 	}
 
 	a := agent.New(agent.Config{
