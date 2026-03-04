@@ -7,6 +7,7 @@ import (
 
 	"github.com/caarlos0/env/v6"
 	"github.com/puzakov/watchdog/internal/handler"
+	"github.com/puzakov/watchdog/internal/logger"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
@@ -22,17 +23,19 @@ func main() {
 
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
-
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-
 	if cfg.Addr != "" {
 		addr = cfg.Addr
 	}
 
+	if err = logger.Initialize("info"); err != nil {
+		fmt.Println(err.Error())
+	}
+
 	storage := service.NewMemStorage()
-	h := handler.NewHandler(storage)
+	h := logger.WrapHandler(handler.NewHandler(storage))
 
 	err = http.ListenAndServe(addr, h)
 	if err != nil {
