@@ -15,7 +15,7 @@ func NewHandler(store service.Storage) http.Handler {
 	})
 
 	router.Route("/value", func(r chi.Router) {
-		r.Post("/{type}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 			HandleValueJSON(store, w, r)
 		})
 		r.Get("/{type}/{name}", func(w http.ResponseWriter, r *http.Request) {
