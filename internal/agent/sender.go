@@ -1,12 +1,11 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 
 	models "github.com/puzakov/watchdog/internal/model"
@@ -37,25 +36,26 @@ func NewSender(cfg SenderConfig) *Sender {
 }
 
 func (s *Sender) SendGauge(name string, value float64) error {
-	val := strconv.FormatFloat(value, 'g', -1, 64)
-	return s.post(models.Gauge, name, val)
+	return s.post(&models.Metrics{ID: name, MType: models.Gauge, Value: &value})
 }
 
 func (s *Sender) SendCounter(name string, delta int64) error {
-	val := strconv.FormatInt(delta, 10)
-	return s.post(models.Counter, name, val)
+	return s.post(&models.Metrics{ID: name, MType: models.Counter, Delta: &delta})
 }
 
-func (s *Sender) post(mType, name, value string) error {
-	escapedName := url.PathEscape(name)
-	escapedValue := url.PathEscape(value)
-	u := fmt.Sprintf("%s/update/%s/%s/%s", s.cfg.ServerAddress, mType, escapedName, escapedValue)
+func (s *Sender) post(args *models.Metrics) error {
+	u := fmt.Sprintf("%s/update", s.cfg.ServerAddress)
 
-	req, err := http.NewRequest(http.MethodPost, u, http.NoBody)
+	body, err := json.Marshal(&args)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "text/plain")
+
+	req, err := http.NewRequest(http.MethodPost, u, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.cfg.Client.Do(req)
 	if err != nil {
