@@ -57,8 +57,6 @@ func Gzip(next http.Handler) http.Handler {
 		}
 		defer gzw.Close()
 
-		w.Header().Set("Content-Encoding", "gzip")
-
 		next.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, Writer: gzw}, r)
 	})
 }
