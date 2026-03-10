@@ -8,6 +8,7 @@ import (
 	"github.com/caarlos0/env/v6"
 	"github.com/puzakov/watchdog/internal/handler"
 	"github.com/puzakov/watchdog/internal/logger"
+	"github.com/puzakov/watchdog/internal/middleware"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
@@ -35,7 +36,9 @@ func main() {
 	}
 
 	storage := service.NewMemStorage()
-	h := logger.WrapHandler(handler.NewHandler(storage))
+	h := handler.NewHandler(storage)
+	h = middleware.Gzip(h)
+	h = middleware.LogRequest(h)
 
 	err = http.ListenAndServe(addr, h)
 	if err != nil {
