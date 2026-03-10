@@ -1,9 +1,10 @@
-package logger
+package middleware
 
 import (
 	"net/http"
 	"time"
 
+	"github.com/puzakov/watchdog/internal/logger"
 	"go.uber.org/zap"
 )
 
@@ -29,7 +30,7 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.status = statusCode // захватываем код статуса
 }
 
-func WrapHandler(h http.Handler) http.Handler {
+func LogRequest(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -41,7 +42,7 @@ func WrapHandler(h http.Handler) http.Handler {
 
 		duration := time.Since(start)
 
-		Log.Info(
+		logger.Log.Info(
 			"completed HTTP request",
 			zap.String("uri", r.RequestURI),
 			zap.String("method", r.Method),

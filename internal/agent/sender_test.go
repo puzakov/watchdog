@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,16 +12,28 @@ import (
 )
 
 func TestSender_SendGauge_SendsExpectedRequest(t *testing.T) {
-	var gotMethod, gotPath, gotCT string
+	var gotMethod, gotPath, gotCT, gotCE string
 	var got models.Metrics
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.EscapedPath()
 		gotCT = r.Header.Get("Content-Type")
+		gotCE = r.Header.Get("Content-Encoding")
 		defer r.Body.Close()
 
-		body, _ := io.ReadAll(r.Body)
+		var body []byte
+		if gotCE == "gzip" {
+			gzr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			body, _ = io.ReadAll(gzr)
+			_ = gzr.Close()
+		} else {
+			body, _ = io.ReadAll(r.Body)
+		}
 		_ = json.Unmarshal(body, &got)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -41,6 +54,9 @@ func TestSender_SendGauge_SendsExpectedRequest(t *testing.T) {
 	if gotCT != "application/json" {
 		t.Fatalf("Content-Type = %q, want %q", gotCT, "application/json")
 	}
+	if gotCE != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want %q", gotCE, "gzip")
+	}
 	if gotPath != "/update" {
 		t.Fatalf("path = %q, want %q", gotPath, "/update")
 	}
@@ -52,14 +68,27 @@ func TestSender_SendGauge_SendsExpectedRequest(t *testing.T) {
 func TestSender_SendCounter_SendsExpectedRequest(t *testing.T) {
 	var gotPath string
 	var gotCT string
+	var gotCE string
 	var got models.Metrics
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.EscapedPath()
 		gotCT = r.Header.Get("Content-Type")
+		gotCE = r.Header.Get("Content-Encoding")
 		defer r.Body.Close()
 
-		body, _ := io.ReadAll(r.Body)
+		var body []byte
+		if gotCE == "gzip" {
+			gzr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			body, _ = io.ReadAll(gzr)
+			_ = gzr.Close()
+		} else {
+			body, _ = io.ReadAll(r.Body)
+		}
 		_ = json.Unmarshal(body, &got)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -75,6 +104,9 @@ func TestSender_SendCounter_SendsExpectedRequest(t *testing.T) {
 	}
 	if gotCT != "application/json" {
 		t.Fatalf("Content-Type = %q, want %q", gotCT, "application/json")
+	}
+	if gotCE != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want %q", gotCE, "gzip")
 	}
 	if gotPath != "/update" {
 		t.Fatalf("path = %q, want %q", gotPath, "/update")

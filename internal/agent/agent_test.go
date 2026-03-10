@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"log"
@@ -51,7 +52,18 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		body, _ := io.ReadAll(r.Body)
+		var body []byte
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gzr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			body, _ = io.ReadAll(gzr)
+			_ = gzr.Close()
+		} else {
+			body, _ = io.ReadAll(r.Body)
+		}
 		var m models.Metrics
 		_ = json.Unmarshal(body, &m)
 		sent = append(sent, sentMetric{Path: r.URL.EscapedPath(), M: m})
