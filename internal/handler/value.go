@@ -88,11 +88,10 @@ func HandleValueJSON(store service.Storage, w http.ResponseWriter, r *http.Reque
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	// сериализуем ответ сервера
+	w.WriteHeader(http.StatusOK)
+
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(&args); err != nil {
 		logger.Log.Debug("error encoding response", zap.Error(err))
-		return
 	}
-	w.WriteHeader(http.StatusOK)
 }
