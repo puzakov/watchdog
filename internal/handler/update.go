@@ -77,6 +77,13 @@ func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
+	// Resty в автотестах может переиспользовать Request с SetResult,
+	// поэтому ответ должен быть валидным JSON, даже если тест его не проверяет.
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(&args); err != nil {
+		logger.Log.Debug("error encoding response", zap.Error(err))
+	}
 }
 
 func updateInternal(args *models.Metrics, store service.Storage) error {

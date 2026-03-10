@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
@@ -106,5 +109,32 @@ func TestHandleUpdate_Counter_InvalidValue_BadRequest(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateJSON_ReturnsValidJSONBody(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store)
+
+	d := int64(3)
+	reqBody, _ := json.Marshal(&models.Metrics{ID: "c1", MType: models.Counter, Delta: &d})
+	req := httptest.NewRequest(http.MethodPost, "/update/", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if ct := w.Header().Get("Content-Type"); ct == "" || ct[:16] != "application/json" {
+		t.Fatalf("Content-Type = %q, want prefix %q", ct, "application/json")
+	}
+
+	var resp models.Metrics
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v, body=%q", err, w.Body.String())
+	}
+	if resp.ID != "c1" || resp.MType != models.Counter || resp.Delta == nil || *resp.Delta != 3 {
+		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
