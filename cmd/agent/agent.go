@@ -38,8 +38,10 @@ func main() {
 	switch {
 	case cfg.Addr != "":
 		addr = cfg.Addr
+		fallthrough
 	case cfg.PollInterval != 0:
 		pollInterval = cfg.PollInterval
+		fallthrough
 	case cfg.ReportInterval != 0:
 		reportInterval = cfg.ReportInterval
 	}

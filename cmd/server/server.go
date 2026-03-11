@@ -43,14 +43,17 @@ func main() {
 	switch {
 	case cfg.Addr != "":
 		addr = cfg.Addr
+		fallthrough
 	case cfg.StoreInterval != "":
 		if v, err := strconv.Atoi(cfg.StoreInterval); err != nil {
 			fmt.Println(err.Error())
 		} else {
 			storeInterval = v
 		}
+		fallthrough
 	case cfg.FileStoragePath != "":
 		fileStoragePath = cfg.FileStoragePath
+		fallthrough
 	case cfg.Restore:
 		restore = true
 	}
