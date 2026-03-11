@@ -51,7 +51,7 @@ func main() {
 		}
 	case cfg.FileStoragePath != "":
 		fileStoragePath = cfg.FileStoragePath
-	case cfg.Restore == true:
+	case cfg.Restore:
 		restore = true
 	}
 
@@ -69,11 +69,8 @@ func main() {
 		go func() {
 			ticker := time.NewTicker(time.Duration(storeInterval) * time.Second)
 			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					_ = fs.Save(storage.Snapshot())
-				}
+			for range ticker.C {
+				_ = fs.Save(storage.Snapshot())
 			}
 		}()
 	}
