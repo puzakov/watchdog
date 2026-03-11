@@ -4,17 +4,18 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/puzakov/watchdog/internal/handler"
-	"github.com/puzakov/watchdog/internal/logger"
 	"github.com/puzakov/watchdog/internal/middleware"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
 type EnvConfig struct {
 	Addr            string `env:"ADDRESS"`
-	StoreInterval   int    `env:"STORE_INTERVAL"`
+	StoreInterval   string `env:"STORE_INTERVAL"` // тип string потому что int по-умолчанию 0, это влияет на логику если не задано значение
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
 }
@@ -38,15 +39,47 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	if cfg.Addr != "" {
+
+	switch {
+	case cfg.Addr != "":
 		addr = cfg.Addr
+	case cfg.StoreInterval != "":
+		if v, err := strconv.Atoi(cfg.StoreInterval); err != nil {
+			fmt.Println(err.Error())
+		} else {
+			storeInterval = v
+		}
+	case cfg.FileStoragePath != "":
+		fileStoragePath = cfg.FileStoragePath
+	case cfg.Restore == true:
+		restore = true
 	}
 
-	if err = logger.Initialize("info"); err != nil {
-		fmt.Println(err.Error())
+	baseStorage := service.NewMemStorage()
+	fs := service.NewFileStore(fileStoragePath)
+	if restore {
+		if err := fs.Restore(baseStorage); err != nil {
+			fmt.Println(err.Error())
+		}
 	}
 
-	storage := service.NewMemStorage()
+	var storage service.Storage = baseStorage
+	if storeInterval == 0 {
+		storage = service.NewPersistingStorage(baseStorage, fs)
+	} else if storeInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(storeInterval) * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					_ = fs.Save(baseStorage.Snapshot())
+				}
+
+			}
+		}()
+	}
+
 	h := handler.NewHandler(storage)
 	h = middleware.Gzip(h)
 	h = middleware.LogRequest(h)
