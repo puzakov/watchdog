@@ -13,13 +13,24 @@ import (
 )
 
 type EnvConfig struct {
-	Addr string `env:"ADDRESS"`
+	Addr            string `env:"ADDRESS"`
+	StoreInterval   int    `env:"STORE_INTERVAL"`
+	FileStoragePath string `env:"FILE_STORAGE_PATH"`
+	Restore         bool   `env:"RESTORE"`
 }
 
 func main() {
-	var addr string
+	var (
+		addr            string
+		storeInterval   int
+		fileStoragePath string
+		restore         bool
+	)
 
 	flag.StringVar(&addr, "a", "localhost:8080", "server address")
+	flag.IntVar(&storeInterval, "i", 300, "store interval in seconds")
+	flag.StringVar(&fileStoragePath, "f", "storage.json", "file storage path")
+	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
 	flag.Parse()
 
 	var cfg EnvConfig
