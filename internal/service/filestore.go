@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -86,6 +88,9 @@ func (fs *FileStore) Restore(storage Storage) error {
 	var metrics []models.Metrics
 	dec := json.NewDecoder(f)
 	if err := dec.Decode(&metrics); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
 		return err
 	}
 
@@ -117,11 +122,11 @@ func NewPersistingStorage(inner Storage, fs *FileStore) *PersistingStorage {
 }
 
 func (s *PersistingStorage) UpdateGauge(name string, value float64) {
-	s.UpdateGauge(name, value)
+	s.Storage.UpdateGauge(name, value)
 	_ = s.fs.Save(s.Snapshot())
 }
 
 func (s *PersistingStorage) UpdateCounter(name string, delta int64) {
-	s.UpdateCounter(name, delta)
+	s.Storage.UpdateCounter(name, delta)
 	_ = s.fs.Save(s.Snapshot())
 }

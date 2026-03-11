@@ -55,17 +55,16 @@ func main() {
 		restore = true
 	}
 
-	baseStorage := service.NewMemStorage()
+	storage := service.NewMemStorage()
 	fs := service.NewFileStore(fileStoragePath)
 	if restore {
-		if err := fs.Restore(baseStorage); err != nil {
+		if err := fs.Restore(storage); err != nil {
 			fmt.Println(err.Error())
 		}
 	}
 
-	var storage service.Storage = baseStorage
 	if storeInterval == 0 {
-		storage = service.NewPersistingStorage(baseStorage, fs)
+		storage = service.NewPersistingStorage(storage, fs)
 	} else if storeInterval > 0 {
 		go func() {
 			ticker := time.NewTicker(time.Duration(storeInterval) * time.Second)
@@ -73,9 +72,8 @@ func main() {
 			for {
 				select {
 				case <-ticker.C:
-					_ = fs.Save(baseStorage.Snapshot())
+					_ = fs.Save(storage.Snapshot())
 				}
-
 			}
 		}()
 	}

@@ -20,7 +20,7 @@ type Config struct {
 
 type Agent struct {
 	cfg    Config
-	store  *service.MemStorage
+	store  service.Storage
 	sender *Sender
 
 	lastReportedCounters map[string]int64
