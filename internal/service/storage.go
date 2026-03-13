@@ -16,7 +16,7 @@ type MemStorage struct {
 	counters map[string]int64
 }
 
-func NewMemStorage() *MemStorage {
+func NewMemStorage() Storage {
 	return &MemStorage{
 		// Тип gauge, float64 — новое значение должно замещать предыдущее.
 		gauges: make(map[string]float64),

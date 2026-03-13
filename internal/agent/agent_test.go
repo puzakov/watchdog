@@ -1,14 +1,17 @@
 package agent
 
 import (
+	"compress/gzip"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"strings"
-	"sync"
+	"sort"
 	"testing"
 	"time"
+
+	models "github.com/puzakov/watchdog/internal/model"
 )
 
 func TestAgent_pollOnce_UpdatesPollCountAndRandomValue(t *testing.T) {
@@ -41,15 +44,29 @@ func TestAgent_pollOnce_UpdatesPollCountAndRandomValue(t *testing.T) {
 }
 
 func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
-	var (
-		mu    sync.Mutex
-		paths []string
-	)
+	type sentMetric struct {
+		Path string
+		M    models.Metrics
+	}
+	var sent []sentMetric
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		paths = append(paths, r.URL.EscapedPath())
-		mu.Unlock()
+		defer r.Body.Close()
+		var body []byte
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gzr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			body, _ = io.ReadAll(gzr)
+			_ = gzr.Close()
+		} else {
+			body, _ = io.ReadAll(r.Body)
+		}
+		var m models.Metrics
+		_ = json.Unmarshal(body, &m)
+		sent = append(sent, sentMetric{Path: r.URL.EscapedPath(), M: m})
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
@@ -68,40 +85,46 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 
 	a.reportOnce()
 
-	mu.Lock()
-	got1 := strings.Join(paths, "\n")
-	mu.Unlock()
-	if !strings.Contains(got1, "/update/counter/PollCount/5") {
-		t.Fatalf("first report should send delta=5, got:\n%s", got1)
+	var gotDelta1 *int64
+	for _, s := range sent {
+		if s.Path != "/update" {
+			t.Fatalf("unexpected path %q", s.Path)
+		}
+		if s.M.ID == "PollCount" && s.M.MType == models.Counter {
+			gotDelta1 = s.M.Delta
+		}
+	}
+	if gotDelta1 == nil || *gotDelta1 != 5 {
+		t.Fatalf("first report should send delta=5, got sent=%+v", sent)
 	}
 
 	// Второй раз без изменений — counter не должен отправляться.
-	mu.Lock()
-	paths = nil
-	mu.Unlock()
+	sent = nil
 
 	a.reportOnce()
 
-	mu.Lock()
-	got2 := strings.Join(paths, "\n")
-	mu.Unlock()
-	if strings.Contains(got2, "/update/counter/PollCount/") {
-		t.Fatalf("second report should not send counter, got:\n%s", got2)
+	for _, s := range sent {
+		if s.M.ID == "PollCount" && s.M.MType == models.Counter {
+			t.Fatalf("second report should not send counter, got sent=%+v", sent)
+		}
 	}
 
 	// Увеличили counter на 2 — должен уйти delta=2.
 	a.store.UpdateCounter("PollCount", 2)
 
-	mu.Lock()
-	paths = nil
-	mu.Unlock()
+	sent = nil
 
 	a.reportOnce()
 
-	mu.Lock()
-	got3 := strings.Join(paths, "\n")
-	mu.Unlock()
-	if !strings.Contains(got3, "/update/counter/PollCount/2") {
-		t.Fatalf("third report should send delta=2, got:\n%s", got3)
+	var gotDelta3 *int64
+	for _, s := range sent {
+		if s.M.ID == "PollCount" && s.M.MType == models.Counter {
+			gotDelta3 = s.M.Delta
+		}
+	}
+	if gotDelta3 == nil || *gotDelta3 != 2 {
+		// Отсортируем для более стабильного вывода в ошибке
+		sort.Slice(sent, func(i, j int) bool { return sent[i].M.ID < sent[j].M.ID })
+		t.Fatalf("third report should send delta=2, got sent=%+v", sent)
 	}
 }

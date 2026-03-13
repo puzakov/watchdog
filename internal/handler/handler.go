@@ -14,20 +14,22 @@ func NewHandler(store service.Storage) http.Handler {
 		HandleIndex(store, w)
 	})
 
-	router.Get("/value/{type}/{name}", func(w http.ResponseWriter, r *http.Request) {
-		HandleValue(&ValueArgs{
-			mType: chi.URLParam(r, "type"),
-			name:  chi.URLParam(r, "name"),
-		}, store, w, r)
+	router.Route("/value", func(r chi.Router) {
+		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+			HandleValueJSON(store, w, r)
+		})
+		r.Get("/{type}/{name}", func(w http.ResponseWriter, r *http.Request) {
+			HandleValue(store, w, r)
+		})
 	})
 
-	router.Post("/update/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
-		HandleUpdate(&UpdateArgs{
-			mType: chi.URLParam(r, "type"),
-			name:  chi.URLParam(r, "name"),
-			value: chi.URLParam(r, "value"),
-		}, store, w, r)
-
+	router.Route("/update", func(r chi.Router) {
+		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+			HandleUpdateJSON(store, w, r)
+		})
+		r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
+			HandleUpdate(store, w, r)
+		})
 	})
 
 	return router

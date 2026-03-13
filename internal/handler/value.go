@@ -1,11 +1,16 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/puzakov/watchdog/internal/logger"
 	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/service"
+	"go.uber.org/zap"
 )
 
 type ValueArgs struct {
@@ -13,8 +18,13 @@ type ValueArgs struct {
 	name  string
 }
 
-func HandleValue(args *ValueArgs, store service.Storage, w http.ResponseWriter, r *http.Request) {
+func HandleValue(store service.Storage, w http.ResponseWriter, r *http.Request) {
 	var out string
+
+	args := &ValueArgs{
+		mType: chi.URLParam(r, "type"),
+		name:  chi.URLParam(r, "name"),
+	}
 
 	switch args.mType {
 	case models.Gauge:
@@ -39,4 +49,49 @@ func HandleValue(args *ValueArgs, store service.Storage, w http.ResponseWriter, 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(out))
+}
+
+func HandleValueJSON(store service.Storage, w http.ResponseWriter, r *http.Request) {
+	ct := r.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		logger.Log.Debug("Invalid content type", zap.String("Content-Type", ct))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	args := models.Metrics{}
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&args); err != nil {
+		logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	switch args.MType {
+	case models.Gauge:
+		v, ok := store.GetGauge(args.ID)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		args.Value = &v
+	case models.Counter:
+		v, ok := store.GetCounter(args.ID)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		args.Delta = &v
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(&args); err != nil {
+		logger.Log.Debug("error encoding response", zap.Error(err))
+	}
 }
