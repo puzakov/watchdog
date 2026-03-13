@@ -40,21 +40,20 @@ func main() {
 		fmt.Println(err.Error())
 	}
 
-	switch {
-	case cfg.Addr != "":
+	if cfg.Addr != "" {
 		addr = cfg.Addr
-		fallthrough
-	case cfg.StoreInterval != "":
+	}
+	if cfg.StoreInterval != "" {
 		if v, err := strconv.Atoi(cfg.StoreInterval); err != nil {
 			fmt.Println(err.Error())
 		} else {
 			storeInterval = v
 		}
-		fallthrough
-	case cfg.FileStoragePath != "":
+	}
+	if cfg.FileStoragePath != "" {
 		fileStoragePath = cfg.FileStoragePath
-		fallthrough
-	case cfg.Restore:
+	}
+	if cfg.Restore {
 		restore = true
 	}
 

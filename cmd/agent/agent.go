@@ -12,8 +12,8 @@ import (
 
 type EnvConfig struct {
 	Addr           string `env:"ADDRESS"`
-	PollInterval   int    `env:"REPORT_INTERVAL"`
-	ReportInterval int    `env:"POLL_INTERVAL"`
+	PollInterval   int    `env:"POLL_INTERVAL"`
+	ReportInterval int    `env:"REPORT_INTERVAL"`
 }
 
 func main() {
@@ -34,15 +34,13 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-
-	switch {
-	case cfg.Addr != "":
+	if cfg.Addr != "" {
 		addr = cfg.Addr
-		fallthrough
-	case cfg.PollInterval != 0:
+	}
+	if cfg.PollInterval != 0 {
 		pollInterval = cfg.PollInterval
-		fallthrough
-	case cfg.ReportInterval != 0:
+	}
+	if cfg.ReportInterval != 0 {
 		reportInterval = cfg.ReportInterval
 	}
 
