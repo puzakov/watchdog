@@ -30,7 +30,7 @@ func AppConfig() *EnvConfig {
 	flag.IntVar(&storeInterval, "i", 300, "store interval in seconds")
 	flag.StringVar(&fileStoragePath, "f", "storage.json", "file storage path")
 	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
-	flag.StringVar(&databaseDsn, "d", "postgresql://watchdog_db_user:secret@localhost:5434/watchdog_db_app", "Database connection string")
+	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
 	flag.Parse()
 
 	var cfg EnvConfig

@@ -8,7 +8,7 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-func NewHandler(store service.Storage, conn db.DatabaseConnection) http.Handler {
+func NewHandler(store service.Storage, conn *db.DatabaseConnection) http.Handler {
 	router := chi.NewRouter()
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {

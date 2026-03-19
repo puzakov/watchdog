@@ -8,7 +8,7 @@ import (
 	"github.com/puzakov/watchdog/internal/db"
 )
 
-func HandlePing(conn db.DatabaseConnection, w http.ResponseWriter) {
+func HandlePing(conn *db.DatabaseConnection, w http.ResponseWriter) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(1)*time.Second)
 	defer cancel()
