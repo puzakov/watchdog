@@ -9,6 +9,10 @@ import (
 )
 
 func HandlePing(conn *db.DatabaseConnection, w http.ResponseWriter) {
+	if conn == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(1)*time.Second)
 	defer cancel()

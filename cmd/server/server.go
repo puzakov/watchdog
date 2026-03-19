@@ -26,9 +26,10 @@ func run() error {
 
 	conn, err := db.NewDatabaseConnection(context.Background(), cfg.DatabaseDsn)
 	if err != nil {
-		return fmt.Errorf("DB connection error: %w", err)
+		fmt.Println(err.Error())
+	} else {
+		defer conn.Close(context.Background())
 	}
-	defer conn.Close(context.Background())
 
 	if cfg.Restore {
 		if err := fs.Restore(storage); err != nil {
