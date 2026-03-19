@@ -4,14 +4,19 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-func NewHandler(store service.Storage) http.Handler {
+func NewHandler(store service.Storage, conn db.DatabaseConnection) http.Handler {
 	router := chi.NewRouter()
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		HandleIndex(store, w)
+	})
+
+	router.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
+		HandlePing(conn, w)
 	})
 
 	router.Route("/value", func(r chi.Router) {
