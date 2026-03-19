@@ -26,7 +26,7 @@ func run() error {
 
 	conn, err := db.NewDatabaseConnection(context.Background(), cfg.DatabaseDsn)
 	if err != nil {
-		return fmt.Errorf("DB connection error", err)
+		return fmt.Errorf("DB connection error: %w", err)
 	}
 	defer conn.Close(context.Background())
 

@@ -6,12 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
 func TestNewHandler_RoutesToUpdate(t *testing.T) {
 	store := service.NewMemStorage()
-	h := NewHandler(store)
+	h := NewHandler(store, db.DatabaseConnection{})
 
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/123", nil)
 	req.Header.Set("Content-Type", "text/plain")
@@ -33,7 +34,7 @@ func TestNewHandler_GetRoot_ReturnsHTMLWithMetrics(t *testing.T) {
 	store.UpdateGauge("Alloc", 1.5)
 	store.UpdateCounter("PollCount", 2)
 
-	h := NewHandler(store)
+	h := NewHandler(store, db.DatabaseConnection{})
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -61,7 +62,7 @@ func TestNewHandler_RoutesToValue(t *testing.T) {
 	store := service.NewMemStorage()
 	store.UpdateGauge("Alloc", 1.5)
 
-	h := NewHandler(store)
+	h := NewHandler(store, db.DatabaseConnection{})
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Alloc", nil)
 	w := httptest.NewRecorder()
