@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -76,6 +77,83 @@ ON CONFLICT (id, mtype)
 DO UPDATE SET delta = metrics.delta + EXCLUDED.delta, value = NULL, updated_at = NOW()`
 
 	_, _ = s.pool.Exec(context.Background(), q, name, models.Counter, delta)
+}
+
+func (s *PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
+	if s == nil || s.pool == nil {
+		return nil
+	}
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	// Deduplicate to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time".
+	// - gauge: last value wins
+	// - counter: sum deltas
+	gauges := make(map[string]float64)
+	counters := make(map[string]int64)
+	for _, m := range metrics {
+		switch m.MType {
+		case models.Gauge:
+			if m.Value == nil {
+				continue
+			}
+			gauges[m.ID] = *m.Value
+		case models.Counter:
+			if m.Delta == nil {
+				continue
+			}
+			counters[m.ID] += *m.Delta
+		default:
+			// ignore unknown
+		}
+	}
+
+	tx, err := s.pool.Begin(context.Background())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	if len(gauges) > 0 {
+		ids := make([]string, 0, len(gauges))
+		vals := make([]float64, 0, len(gauges))
+		for id, v := range gauges {
+			ids = append(ids, id)
+			vals = append(vals, v)
+		}
+
+		const qGauge = `
+INSERT INTO metrics (id, mtype, value, delta, updated_at)
+SELECT unnest($1::text[]), $3, unnest($2::float8[]), NULL, NOW()
+ON CONFLICT (id, mtype)
+DO UPDATE SET value = EXCLUDED.value, delta = NULL, updated_at = NOW()`
+
+		if _, err := tx.Exec(context.Background(), qGauge, ids, vals, models.Gauge); err != nil {
+			return fmt.Errorf("batch upsert gauges: %w", err)
+		}
+	}
+
+	if len(counters) > 0 {
+		ids := make([]string, 0, len(counters))
+		deltas := make([]int64, 0, len(counters))
+		for id, d := range counters {
+			ids = append(ids, id)
+			deltas = append(deltas, d)
+		}
+
+		const qCounter = `
+INSERT INTO metrics (id, mtype, delta, value, updated_at)
+SELECT unnest($1::text[]), $3, unnest($2::bigint[]), NULL, NOW()
+ON CONFLICT (id, mtype)
+DO UPDATE SET delta = metrics.delta + EXCLUDED.delta, value = NULL, updated_at = NOW()`
+
+		if _, err := tx.Exec(context.Background(), qCounter, ids, deltas, models.Counter); err != nil {
+			return fmt.Errorf("batch upsert counters: %w", err)
+		}
+	}
+
+	return tx.Commit(context.Background())
 }
 
 func (s *PostgresStorage) Snapshot() (map[string]float64, map[string]int64) {

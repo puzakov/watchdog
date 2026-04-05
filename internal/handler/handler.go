@@ -37,5 +37,11 @@ func NewHandler(store service.Storage, conn *db.DatabaseConnection) http.Handler
 		})
 	})
 
+	router.Route("/updates", func(r chi.Router) {
+		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+			HandleUpdatesJSON(store, w, r)
+		})
+	})
+
 	return router
 }

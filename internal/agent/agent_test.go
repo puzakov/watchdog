@@ -46,7 +46,7 @@ func TestAgent_pollOnce_UpdatesPollCountAndRandomValue(t *testing.T) {
 func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 	type sentMetric struct {
 		Path string
-		M    models.Metrics
+		M    []models.Metrics
 	}
 	var sent []sentMetric
 
@@ -64,7 +64,7 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 		} else {
 			body, _ = io.ReadAll(r.Body)
 		}
-		var m models.Metrics
+		var m []models.Metrics
 		_ = json.Unmarshal(body, &m)
 		sent = append(sent, sentMetric{Path: r.URL.EscapedPath(), M: m})
 		w.WriteHeader(http.StatusOK)
@@ -87,11 +87,13 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 
 	var gotDelta1 *int64
 	for _, s := range sent {
-		if s.Path != "/update" {
+		if s.Path != "/updates" {
 			t.Fatalf("unexpected path %q", s.Path)
 		}
-		if s.M.ID == "PollCount" && s.M.MType == models.Counter {
-			gotDelta1 = s.M.Delta
+		for _, m := range s.M {
+			if m.ID == "PollCount" && m.MType == models.Counter {
+				gotDelta1 = m.Delta
+			}
 		}
 	}
 	if gotDelta1 == nil || *gotDelta1 != 5 {
@@ -104,8 +106,10 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 	a.reportOnce()
 
 	for _, s := range sent {
-		if s.M.ID == "PollCount" && s.M.MType == models.Counter {
-			t.Fatalf("second report should not send counter, got sent=%+v", sent)
+		for _, m := range s.M {
+			if m.ID == "PollCount" && m.MType == models.Counter {
+				t.Fatalf("second report should not send counter, got sent=%+v", sent)
+			}
 		}
 	}
 
@@ -118,13 +122,20 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 
 	var gotDelta3 *int64
 	for _, s := range sent {
-		if s.M.ID == "PollCount" && s.M.MType == models.Counter {
-			gotDelta3 = s.M.Delta
+		for _, m := range s.M {
+			if m.ID == "PollCount" && m.MType == models.Counter {
+				gotDelta3 = m.Delta
+			}
 		}
 	}
 	if gotDelta3 == nil || *gotDelta3 != 2 {
 		// Отсортируем для более стабильного вывода в ошибке
-		sort.Slice(sent, func(i, j int) bool { return sent[i].M.ID < sent[j].M.ID })
+		sort.Slice(sent, func(i, j int) bool {
+			if len(sent[i].M) == 0 || len(sent[j].M) == 0 {
+				return len(sent[i].M) < len(sent[j].M)
+			}
+			return sent[i].M[0].ID < sent[j].M[0].ID
+		})
 		t.Fatalf("third report should send delta=2, got sent=%+v", sent)
 	}
 }

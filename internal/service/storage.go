@@ -1,12 +1,17 @@
 package service
 
-import "sync"
+import (
+	"sync"
+
+	models "github.com/puzakov/watchdog/internal/model"
+)
 
 type Storage interface {
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
 	UpdateGauge(name string, value float64)
 	UpdateCounter(name string, delta int64)
+	UpdateBatch(metrics []models.Metrics) error
 	Snapshot() (map[string]float64, map[string]int64)
 }
 
@@ -49,6 +54,29 @@ func (s *MemStorage) UpdateCounter(name string, delta int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.counters[name] += delta
+}
+
+func (s *MemStorage) UpdateBatch(metrics []models.Metrics) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, m := range metrics {
+		switch m.MType {
+		case models.Gauge:
+			if m.Value == nil {
+				continue
+			}
+			s.gauges[m.ID] = *m.Value
+		case models.Counter:
+			if m.Delta == nil {
+				continue
+			}
+			s.counters[m.ID] += *m.Delta
+		default:
+			// ignore unknown types to keep behaviour close to UpdateGauge/UpdateCounter (no errors)
+		}
+	}
+	return nil
 }
 
 func (s *MemStorage) Snapshot() (map[string]float64, map[string]int64) {

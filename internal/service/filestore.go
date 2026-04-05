@@ -130,3 +130,10 @@ func (s *PersistingStorage) UpdateCounter(name string, delta int64) {
 	s.Storage.UpdateCounter(name, delta)
 	_ = s.fs.Save(s.Snapshot())
 }
+
+func (s *PersistingStorage) UpdateBatch(metrics []models.Metrics) error {
+	if err := s.Storage.UpdateBatch(metrics); err != nil {
+		return err
+	}
+	return s.fs.Save(s.Snapshot())
+}
