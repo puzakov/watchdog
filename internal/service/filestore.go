@@ -100,12 +100,12 @@ func (fs *FileStore) Restore(storage Storage) error {
 			if m.Value == nil {
 				continue
 			}
-			storage.UpdateGauge(m.ID, *m.Value)
+			_ = storage.UpdateGauge(m.ID, *m.Value)
 		case models.Counter:
 			if m.Delta == nil {
 				continue
 			}
-			storage.UpdateCounter(m.ID, *m.Delta)
+			_ = storage.UpdateCounter(m.ID, *m.Delta)
 		}
 	}
 
@@ -121,14 +121,18 @@ func NewPersistingStorage(inner Storage, fs *FileStore) *PersistingStorage {
 	return &PersistingStorage{Storage: inner, fs: fs}
 }
 
-func (s *PersistingStorage) UpdateGauge(name string, value float64) {
-	s.Storage.UpdateGauge(name, value)
-	_ = s.fs.Save(s.Snapshot())
+func (s *PersistingStorage) UpdateGauge(name string, value float64) error {
+	if err := s.Storage.UpdateGauge(name, value); err != nil {
+		return err
+	}
+	return s.fs.Save(s.Snapshot())
 }
 
-func (s *PersistingStorage) UpdateCounter(name string, delta int64) {
-	s.Storage.UpdateCounter(name, delta)
-	_ = s.fs.Save(s.Snapshot())
+func (s *PersistingStorage) UpdateCounter(name string, delta int64) error {
+	if err := s.Storage.UpdateCounter(name, delta); err != nil {
+		return err
+	}
+	return s.fs.Save(s.Snapshot())
 }
 
 func (s *PersistingStorage) UpdateBatch(metrics []models.Metrics) error {

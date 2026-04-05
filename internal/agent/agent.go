@@ -83,11 +83,11 @@ func (a *Agent) Run() {
 func (a *Agent) pollOnce() {
 	gauges := ReadRuntimeGauges()
 	for name, v := range gauges {
-		a.store.UpdateGauge(name, v)
+		_ = a.store.UpdateGauge(name, v)
 	}
 
-	a.store.UpdateGauge("RandomValue", rand.Float64())
-	a.store.UpdateCounter("PollCount", 1)
+	_ = a.store.UpdateGauge("RandomValue", rand.Float64())
+	_ = a.store.UpdateCounter("PollCount", 1)
 }
 
 func (a *Agent) reportOnce() {

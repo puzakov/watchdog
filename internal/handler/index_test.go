@@ -11,8 +11,8 @@ import (
 
 func TestHandleIndex_ReturnsHTMLAndContainsMetrics(t *testing.T) {
 	store := service.NewMemStorage()
-	store.UpdateGauge("Alloc", 1.5)
-	store.UpdateCounter("PollCount", 2)
+	_ = store.UpdateGauge("Alloc", 1.5)
+	_ = store.UpdateCounter("PollCount", 2)
 
 	w := httptest.NewRecorder()
 	HandleIndex(store, w)

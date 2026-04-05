@@ -14,8 +14,8 @@ func TestFileStore_SaveAndRestore(t *testing.T) {
 	path := filepath.Join(dir, "metrics.json")
 
 	s1 := NewMemStorage()
-	s1.UpdateGauge("g1", 1.25)
-	s1.UpdateCounter("c1", 42)
+	_ = s1.UpdateGauge("g1", 1.25)
+	_ = s1.UpdateCounter("c1", 42)
 
 	fs := NewFileStore(path)
 	if err := fs.Save(s1.Snapshot()); err != nil {
@@ -54,7 +54,7 @@ func TestPersistingStorage_SavesOnUpdateWhenIntervalZeroMode(t *testing.T) {
 	fs := NewFileStore(path)
 	s := NewPersistingStorage(base, fs)
 
-	s.UpdateCounter("c1", 7)
+	_ = s.UpdateCounter("c1", 7)
 
 	b, err := os.ReadFile(path)
 	if err != nil {

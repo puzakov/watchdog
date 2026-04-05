@@ -9,8 +9,8 @@ import (
 type Storage interface {
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
-	UpdateGauge(name string, value float64)
-	UpdateCounter(name string, delta int64)
+	UpdateGauge(name string, value float64) error
+	UpdateCounter(name string, delta int64) error
 	UpdateBatch(metrics []models.Metrics) error
 	Snapshot() (map[string]float64, map[string]int64)
 }
@@ -44,16 +44,18 @@ func (s *MemStorage) GetCounter(name string) (int64, bool) {
 	return v, ok
 }
 
-func (s *MemStorage) UpdateGauge(name string, value float64) {
+func (s *MemStorage) UpdateGauge(name string, value float64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gauges[name] = value
+	return nil
 }
 
-func (s *MemStorage) UpdateCounter(name string, delta int64) {
+func (s *MemStorage) UpdateCounter(name string, delta int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.counters[name] += delta
+	return nil
 }
 
 func (s *MemStorage) UpdateBatch(metrics []models.Metrics) error {

@@ -31,8 +31,8 @@ func TestNewHandler_RoutesToUpdate(t *testing.T) {
 
 func TestNewHandler_GetRoot_ReturnsHTMLWithMetrics(t *testing.T) {
 	store := service.NewMemStorage()
-	store.UpdateGauge("Alloc", 1.5)
-	store.UpdateCounter("PollCount", 2)
+	_ = store.UpdateGauge("Alloc", 1.5)
+	_ = store.UpdateCounter("PollCount", 2)
 
 	h := NewHandler(store, &db.DatabaseConnection{})
 
@@ -60,7 +60,7 @@ func TestNewHandler_GetRoot_ReturnsHTMLWithMetrics(t *testing.T) {
 
 func TestNewHandler_RoutesToValue(t *testing.T) {
 	store := service.NewMemStorage()
-	store.UpdateGauge("Alloc", 1.5)
+	_ = store.UpdateGauge("Alloc", 1.5)
 
 	h := NewHandler(store, &db.DatabaseConnection{})
 

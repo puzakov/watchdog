@@ -80,8 +80,8 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 	})
 
 	// Ограничим метрики до одной gauge и одной counter, чтобы тест был стабильным.
-	a.store.UpdateGauge("RandomValue", 1.0)
-	a.store.UpdateCounter("PollCount", 5)
+	_ = a.store.UpdateGauge("RandomValue", 1.0)
+	_ = a.store.UpdateCounter("PollCount", 5)
 
 	a.reportOnce()
 
@@ -114,7 +114,7 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 	}
 
 	// Увеличили counter на 2 — должен уйти delta=2.
-	a.store.UpdateCounter("PollCount", 2)
+	_ = a.store.UpdateCounter("PollCount", 2)
 
 	sent = nil
 

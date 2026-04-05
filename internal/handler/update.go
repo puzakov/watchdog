@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -13,6 +14,8 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 	"go.uber.org/zap"
 )
+
+var errBadRequest = errors.New("bad request")
 
 func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request) {
 	args := models.Metrics{
@@ -46,7 +49,7 @@ func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := updateInternal(&args, store); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		writeUpdateError(w, err)
 		return
 	}
 
@@ -71,7 +74,7 @@ func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Requ
 
 	if err := updateInternal(&args, store); err != nil {
 		logger.Log.Debug(err.Error(), zap.Error(err))
-		w.WriteHeader(http.StatusBadRequest)
+		writeUpdateError(w, err)
 		return
 	}
 
@@ -105,7 +108,7 @@ func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Req
 	batch, err := normalizeBatch(args)
 	if err != nil {
 		logger.Log.Debug(err.Error(), zap.Error(err))
-		w.WriteHeader(http.StatusBadRequest)
+		writeUpdateError(w, err)
 		return
 	}
 
@@ -127,11 +130,21 @@ func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Req
 func updateInternal(args *models.Metrics, store service.Storage) error {
 	switch args.MType {
 	case models.Gauge:
-		store.UpdateGauge(args.ID, *args.Value)
+		if args.Value == nil {
+			return fmt.Errorf("%w: missing gauge value", errBadRequest)
+		}
+		if err := store.UpdateGauge(args.ID, *args.Value); err != nil {
+			return fmt.Errorf("update gauge: %w", err)
+		}
 	case models.Counter:
-		store.UpdateCounter(args.ID, *args.Delta)
+		if args.Delta == nil {
+			return fmt.Errorf("%w: missing counter delta", errBadRequest)
+		}
+		if err := store.UpdateCounter(args.ID, *args.Delta); err != nil {
+			return fmt.Errorf("update counter: %w", err)
+		}
 	default:
-		return fmt.Errorf("unsupported metrics type: %s", args.MType)
+		return fmt.Errorf("%w: unsupported metrics type: %s", errBadRequest, args.MType)
 	}
 
 	return nil
@@ -155,7 +168,7 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 	seen := make(map[key]struct{}, len(in))
 	for _, m := range in {
 		if m.ID == "" || m.MType == "" {
-			return nil, fmt.Errorf("invalid metric: empty id/type")
+			return nil, fmt.Errorf("%w: invalid metric: empty id/type", errBadRequest)
 		}
 
 		k := key{id: m.ID, mtype: m.MType}
@@ -167,16 +180,16 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 		switch m.MType {
 		case models.Gauge:
 			if m.Value == nil {
-				return nil, fmt.Errorf("invalid gauge metric %q: missing value", m.ID)
+				return nil, fmt.Errorf("%w: invalid gauge metric %q: missing value", errBadRequest, m.ID)
 			}
 			gauges[k] = *m.Value // last wins
 		case models.Counter:
 			if m.Delta == nil {
-				return nil, fmt.Errorf("invalid counter metric %q: missing delta", m.ID)
+				return nil, fmt.Errorf("%w: invalid counter metric %q: missing delta", errBadRequest, m.ID)
 			}
 			counters[k] += *m.Delta
 		default:
-			return nil, fmt.Errorf("unsupported metrics type: %s", m.MType)
+			return nil, fmt.Errorf("%w: unsupported metrics type: %s", errBadRequest, m.MType)
 		}
 	}
 
@@ -195,4 +208,12 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 	}
 
 	return out, nil
+}
+
+func writeUpdateError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errBadRequest) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusInternalServerError)
 }
