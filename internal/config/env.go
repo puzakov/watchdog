@@ -28,7 +28,9 @@ func AppConfig() *EnvConfig {
 
 	flag.StringVar(&addr, "a", "localhost:8080", "server address")
 	flag.IntVar(&storeInterval, "i", 300, "store interval in seconds")
-	flag.StringVar(&fileStoragePath, "f", "storage.json", "file storage path")
+	// Путь к файлу по-умолчанию пустой: файловое хранилище включается только
+	// при явном задании флага -f или переменной окружения FILE_STORAGE_PATH.
+	flag.StringVar(&fileStoragePath, "f", "", "file storage path")
 	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
 	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
 	flag.Parse()
