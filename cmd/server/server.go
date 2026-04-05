@@ -24,10 +24,11 @@ func main() {
 
 func run() error {
 	cfg := config.AppConfig()
+	storage := service.NewMemStorage()
+
 	var (
-		storage service.Storage = service.NewMemStorage()
-		fs      *service.FileStore
-		conn    *db.DatabaseConnection
+		fs   *service.FileStore
+		conn *db.DatabaseConnection
 	)
 
 	// Storage selection priority:
