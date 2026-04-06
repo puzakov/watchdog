@@ -22,10 +22,6 @@ func HandlePing(conn *db.DatabaseConnection, w http.ResponseWriter) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if ctx.Err() != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 
 	w.WriteHeader(http.StatusOK)
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -24,14 +25,14 @@ func TestAgent_pollOnce_UpdatesPollCountAndRandomValue(t *testing.T) {
 		Logger:         log.New(io.Discard, "", 0),
 	})
 
-	_, c0 := a.store.Snapshot()
+	_, c0 := a.store.Snapshot(context.Background())
 	if c0["PollCount"] != 0 {
 		t.Fatalf("PollCount before = %d, want %d", c0["PollCount"], 0)
 	}
 
 	a.pollOnce()
 
-	g1, c1 := a.store.Snapshot()
+	g1, c1 := a.store.Snapshot(context.Background())
 	if c1["PollCount"] != 1 {
 		t.Fatalf("PollCount after = %d, want %d", c1["PollCount"], 1)
 	}
@@ -80,8 +81,8 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 	})
 
 	// Ограничим метрики до одной gauge и одной counter, чтобы тест был стабильным.
-	_ = a.store.UpdateGauge("RandomValue", 1.0)
-	_ = a.store.UpdateCounter("PollCount", 5)
+	_ = a.store.UpdateGauge(context.Background(), "RandomValue", 1.0)
+	_ = a.store.UpdateCounter(context.Background(), "PollCount", 5)
 
 	a.reportOnce()
 
@@ -114,7 +115,7 @@ func TestAgent_reportOnce_SendsCounterAsDelta(t *testing.T) {
 	}
 
 	// Увеличили counter на 2 — должен уйти delta=2.
-	_ = a.store.UpdateCounter("PollCount", 2)
+	_ = a.store.UpdateCounter(context.Background(), "PollCount", 2)
 
 	sent = nil
 

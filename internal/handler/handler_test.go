@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,7 +24,7 @@ func TestNewHandler_RoutesToUpdate(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	g, _ := store.Snapshot()
+	g, _ := store.Snapshot(context.Background())
 	if got := g["Alloc"]; got != 123 {
 		t.Fatalf("Alloc = %v, want %v", got, 123)
 	}
@@ -31,8 +32,8 @@ func TestNewHandler_RoutesToUpdate(t *testing.T) {
 
 func TestNewHandler_GetRoot_ReturnsHTMLWithMetrics(t *testing.T) {
 	store := service.NewMemStorage()
-	_ = store.UpdateGauge("Alloc", 1.5)
-	_ = store.UpdateCounter("PollCount", 2)
+	_ = store.UpdateGauge(context.Background(), "Alloc", 1.5)
+	_ = store.UpdateCounter(context.Background(), "PollCount", 2)
 
 	h := NewHandler(store, &db.DatabaseConnection{})
 
@@ -60,7 +61,7 @@ func TestNewHandler_GetRoot_ReturnsHTMLWithMetrics(t *testing.T) {
 
 func TestNewHandler_RoutesToValue(t *testing.T) {
 	store := service.NewMemStorage()
-	_ = store.UpdateGauge("Alloc", 1.5)
+	_ = store.UpdateGauge(context.Background(), "Alloc", 1.5)
 
 	h := NewHandler(store, &db.DatabaseConnection{})
 

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"log"
 	"math/rand"
@@ -81,17 +82,19 @@ func (a *Agent) Run() {
 }
 
 func (a *Agent) pollOnce() {
+	ctx := context.Background()
 	gauges := ReadRuntimeGauges()
 	for name, v := range gauges {
-		_ = a.store.UpdateGauge(name, v)
+		_ = a.store.UpdateGauge(ctx, name, v)
 	}
 
-	_ = a.store.UpdateGauge("RandomValue", rand.Float64())
-	_ = a.store.UpdateCounter("PollCount", 1)
+	_ = a.store.UpdateGauge(ctx, "RandomValue", rand.Float64())
+	_ = a.store.UpdateCounter(ctx, "PollCount", 1)
 }
 
 func (a *Agent) reportOnce() {
-	gauges, counters := a.store.Snapshot()
+	ctx := context.Background()
+	gauges, counters := a.store.Snapshot(ctx)
 
 	batch := make([]models.Metrics, 0, len(gauges)+len(counters))
 	for name, v := range gauges {
@@ -115,12 +118,15 @@ func (a *Agent) reportOnce() {
 		return
 	}
 
-	if err := a.sender.SendBatch(batch); err == nil {
+	err := a.sender.SendBatch(batch)
+	if err == nil {
 		for name, current := range includedCounters {
 			a.lastReportedCounters[name] = current
 		}
 		return
-	} else if errors.Is(err, ErrEndpointUnsupported) {
+	}
+
+	if errors.Is(err, ErrEndpointUnsupported) {
 		// Backward-compatible fallback for older servers.
 		for _, m := range batch {
 			switch m.MType {
@@ -144,8 +150,5 @@ func (a *Agent) reportOnce() {
 				}
 			}
 		}
-		return
-	} else {
-		a.cfg.Logger.Printf("send batch: %v", err)
 	}
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -63,7 +64,7 @@ func TestHandleUpdate_Gauge_OK(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	g, _ := store.Snapshot()
+	g, _ := store.Snapshot(context.Background())
 	if got := g["Alloc"]; got != 1.5 {
 		t.Fatalf("Alloc = %v, want %v", got, 1.5)
 	}
@@ -94,7 +95,7 @@ func TestHandleUpdate_Counter_OK(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	_, c := store.Snapshot()
+	_, c := store.Snapshot(context.Background())
 	if got := c["PollCount"]; got != 10 {
 		t.Fatalf("PollCount = %v, want %v", got, 10)
 	}

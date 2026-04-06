@@ -25,6 +25,7 @@ func main() {
 func run() error {
 	cfg := config.AppConfig()
 	storage := service.NewMemStorage()
+	ctx := context.Background()
 
 	var (
 		fs   *service.FileStore
@@ -36,7 +37,7 @@ func run() error {
 	// 2) File (FILE_STORAGE_PATH / -f)
 	// 3) In-memory
 	if cfg.DatabaseDsn != "" {
-		c, err := db.NewDatabaseConnection(context.Background(), cfg.DatabaseDsn)
+		c, err := db.NewDatabaseConnection(ctx, cfg.DatabaseDsn)
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {
@@ -57,7 +58,7 @@ func run() error {
 		fs = service.NewFileStore(cfg.FileStoragePath)
 
 		if cfg.Restore {
-			if err := fs.Restore(storage); err != nil {
+			if err := fs.Restore(ctx, storage); err != nil {
 				fmt.Println(err.Error())
 			}
 		}
@@ -69,7 +70,7 @@ func run() error {
 				ticker := time.NewTicker(time.Duration(cfg.StoreIntervalInt) * time.Second)
 				defer ticker.Stop()
 				for range ticker.C {
-					_ = fs.Save(storage.Snapshot())
+					_ = fs.Save(storage.Snapshot(ctx))
 				}
 			}()
 		}

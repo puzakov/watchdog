@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -71,7 +72,7 @@ func (fs *FileStore) Save(gauges map[string]float64, counters map[string]int64) 
 	return os.Rename(tmp, fs.path)
 }
 
-func (fs *FileStore) Restore(storage Storage) error {
+func (fs *FileStore) Restore(ctx context.Context, storage Storage) error {
 	if fs == nil || fs.path == "" {
 		return nil
 	}
@@ -100,12 +101,12 @@ func (fs *FileStore) Restore(storage Storage) error {
 			if m.Value == nil {
 				continue
 			}
-			_ = storage.UpdateGauge(m.ID, *m.Value)
+			_ = storage.UpdateGauge(ctx, m.ID, *m.Value)
 		case models.Counter:
 			if m.Delta == nil {
 				continue
 			}
-			_ = storage.UpdateCounter(m.ID, *m.Delta)
+			_ = storage.UpdateCounter(ctx, m.ID, *m.Delta)
 		}
 	}
 
@@ -121,23 +122,23 @@ func NewPersistingStorage(inner Storage, fs *FileStore) *PersistingStorage {
 	return &PersistingStorage{Storage: inner, fs: fs}
 }
 
-func (s *PersistingStorage) UpdateGauge(name string, value float64) error {
-	if err := s.Storage.UpdateGauge(name, value); err != nil {
+func (s *PersistingStorage) UpdateGauge(ctx context.Context, name string, value float64) error {
+	if err := s.Storage.UpdateGauge(ctx, name, value); err != nil {
 		return err
 	}
-	return s.fs.Save(s.Snapshot())
+	return s.fs.Save(s.Snapshot(ctx))
 }
 
-func (s *PersistingStorage) UpdateCounter(name string, delta int64) error {
-	if err := s.Storage.UpdateCounter(name, delta); err != nil {
+func (s *PersistingStorage) UpdateCounter(ctx context.Context, name string, delta int64) error {
+	if err := s.Storage.UpdateCounter(ctx, name, delta); err != nil {
 		return err
 	}
-	return s.fs.Save(s.Snapshot())
+	return s.fs.Save(s.Snapshot(ctx))
 }
 
-func (s *PersistingStorage) UpdateBatch(metrics []models.Metrics) error {
-	if err := s.Storage.UpdateBatch(metrics); err != nil {
+func (s *PersistingStorage) UpdateBatch(ctx context.Context, metrics []models.Metrics) error {
+	if err := s.Storage.UpdateBatch(ctx, metrics); err != nil {
 		return err
 	}
-	return s.fs.Save(s.Snapshot())
+	return s.fs.Save(s.Snapshot(ctx))
 }

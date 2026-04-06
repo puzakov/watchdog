@@ -23,7 +23,7 @@ func NewPostgresStorage(pool *pgxpool.Pool) *PostgresStorage {
 	return &PostgresStorage{pool: pool}
 }
 
-func (s *PostgresStorage) GetGauge(name string) (float64, bool) {
+func (s *PostgresStorage) GetGauge(ctx context.Context, name string) (float64, bool) {
 	if s == nil || s.pool == nil {
 		return 0, false
 	}
@@ -31,7 +31,7 @@ func (s *PostgresStorage) GetGauge(name string) (float64, bool) {
 	const q = `SELECT value FROM metrics WHERE id=$1 AND mtype=$2`
 	var v float64
 	for attempt := 0; ; attempt++ {
-		err := s.pool.QueryRow(context.Background(), q, name, models.Gauge).Scan(&v)
+		err := s.pool.QueryRow(ctx, q, name, models.Gauge).Scan(&v)
 		if err == nil {
 			return v, true
 		}
@@ -46,7 +46,7 @@ func (s *PostgresStorage) GetGauge(name string) (float64, bool) {
 	}
 }
 
-func (s *PostgresStorage) GetCounter(name string) (int64, bool) {
+func (s *PostgresStorage) GetCounter(ctx context.Context, name string) (int64, bool) {
 	if s == nil || s.pool == nil {
 		return 0, false
 	}
@@ -54,7 +54,7 @@ func (s *PostgresStorage) GetCounter(name string) (int64, bool) {
 	const q = `SELECT delta FROM metrics WHERE id=$1 AND mtype=$2`
 	var v int64
 	for attempt := 0; ; attempt++ {
-		err := s.pool.QueryRow(context.Background(), q, name, models.Counter).Scan(&v)
+		err := s.pool.QueryRow(ctx, q, name, models.Counter).Scan(&v)
 		if err == nil {
 			return v, true
 		}
@@ -69,7 +69,7 @@ func (s *PostgresStorage) GetCounter(name string) (int64, bool) {
 	}
 }
 
-func (s *PostgresStorage) UpdateGauge(name string, value float64) error {
+func (s *PostgresStorage) UpdateGauge(ctx context.Context, name string, value float64) error {
 	if s == nil || s.pool == nil {
 		return nil
 	}
@@ -80,10 +80,10 @@ VALUES ($1, $2, $3, NULL, NOW())
 ON CONFLICT (id, mtype)
 DO UPDATE SET value = EXCLUDED.value, delta = NULL, updated_at = NOW()`
 
-	return execWithRetry(s.pool, q, name, models.Gauge, value)
+	return execWithRetry(ctx, s.pool, q, name, models.Gauge, value)
 }
 
-func (s *PostgresStorage) UpdateCounter(name string, delta int64) error {
+func (s *PostgresStorage) UpdateCounter(ctx context.Context, name string, delta int64) error {
 	if s == nil || s.pool == nil {
 		return nil
 	}
@@ -94,10 +94,10 @@ VALUES ($1, $2, $3, NULL, NOW())
 ON CONFLICT (id, mtype)
 DO UPDATE SET delta = metrics.delta + EXCLUDED.delta, value = NULL, updated_at = NOW()`
 
-	return execWithRetry(s.pool, q, name, models.Counter, delta)
+	return execWithRetry(ctx, s.pool, q, name, models.Counter, delta)
 }
 
-func (s *PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
+func (s *PostgresStorage) UpdateBatch(ctx context.Context, metrics []models.Metrics) error {
 	if s == nil || s.pool == nil {
 		return nil
 	}
@@ -128,7 +128,7 @@ func (s *PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
 	}
 
 	for attempt := 0; ; attempt++ {
-		err := s.updateBatchOnce(gauges, counters)
+		err := s.updateBatchOnce(ctx, gauges, counters)
 		if err == nil {
 			return nil
 		}
@@ -140,7 +140,7 @@ func (s *PostgresStorage) UpdateBatch(metrics []models.Metrics) error {
 	}
 }
 
-func (s *PostgresStorage) Snapshot() (map[string]float64, map[string]int64) {
+func (s *PostgresStorage) Snapshot(ctx context.Context) (map[string]float64, map[string]int64) {
 	gauges := make(map[string]float64)
 	counters := make(map[string]int64)
 	if s == nil || s.pool == nil {
@@ -150,7 +150,7 @@ func (s *PostgresStorage) Snapshot() (map[string]float64, map[string]int64) {
 	const q = `SELECT id, mtype, delta, value FROM metrics`
 	var rows pgx.Rows
 	for attempt := 0; ; attempt++ {
-		r, err := s.pool.Query(context.Background(), q)
+		r, err := s.pool.Query(ctx, q)
 		if err == nil {
 			rows = r
 			break
@@ -190,9 +190,9 @@ func (s *PostgresStorage) Snapshot() (map[string]float64, map[string]int64) {
 	return gauges, counters
 }
 
-func execWithRetry(pool *pgxpool.Pool, query string, args ...any) error {
+func execWithRetry(ctx context.Context, pool *pgxpool.Pool, query string, args ...any) error {
 	for attempt := 0; ; attempt++ {
-		_, err := pool.Exec(context.Background(), query, args...)
+		_, err := pool.Exec(ctx, query, args...)
 		if err == nil {
 			return nil
 		}
@@ -213,14 +213,15 @@ func isRetriablePGConnError(err error) bool {
 }
 
 func (s *PostgresStorage) updateBatchOnce(
+	ctx context.Context,
 	gauges map[string]float64,
 	counters map[string]int64,
 ) error {
-	tx, err := s.pool.Begin(context.Background())
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if len(gauges) > 0 {
 		ids := make([]string, 0, len(gauges))
@@ -236,7 +237,7 @@ SELECT unnest($1::text[]), $3, unnest($2::float8[]), NULL, NOW()
 ON CONFLICT (id, mtype)
 DO UPDATE SET value = EXCLUDED.value, delta = NULL, updated_at = NOW()`
 
-		if _, err := tx.Exec(context.Background(), qGauge, ids, vals, models.Gauge); err != nil {
+		if _, err := tx.Exec(ctx, qGauge, ids, vals, models.Gauge); err != nil {
 			return fmt.Errorf("batch upsert gauges: %w", err)
 		}
 	}
@@ -255,10 +256,10 @@ SELECT unnest($1::text[]), $3, unnest($2::bigint[]), NULL, NOW()
 ON CONFLICT (id, mtype)
 DO UPDATE SET delta = metrics.delta + EXCLUDED.delta, value = NULL, updated_at = NOW()`
 
-		if _, err := tx.Exec(context.Background(), qCounter, ids, deltas, models.Counter); err != nil {
+		if _, err := tx.Exec(ctx, qCounter, ids, deltas, models.Counter); err != nil {
 			return fmt.Errorf("batch upsert counters: %w", err)
 		}
 	}
 
-	return tx.Commit(context.Background())
+	return tx.Commit(ctx)
 }

@@ -12,7 +12,7 @@ func NewHandler(store service.Storage, conn *db.DatabaseConnection) http.Handler
 	router := chi.NewRouter()
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		HandleIndex(store, w)
+		HandleIndex(store, w, r)
 	})
 
 	router.Get("/ping", func(w http.ResponseWriter, r *http.Request) {

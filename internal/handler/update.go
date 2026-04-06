@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,7 +49,7 @@ func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request)
 		args.Delta = &delta
 	}
 
-	if err := updateInternal(&args, store); err != nil {
+	if err := updateInternal(r.Context(), &args, store); err != nil {
 		writeUpdateError(w, err)
 		return
 	}
@@ -72,7 +73,7 @@ func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := updateInternal(&args, store); err != nil {
+	if err := updateInternal(r.Context(), &args, store); err != nil {
 		logger.Log.Debug(err.Error(), zap.Error(err))
 		writeUpdateError(w, err)
 		return
@@ -112,7 +113,7 @@ func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := store.UpdateBatch(batch); err != nil {
+	if err := store.UpdateBatch(r.Context(), batch); err != nil {
 		logger.Log.Debug("batch update error", zap.Error(err))
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -127,20 +128,20 @@ func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Req
 	}
 }
 
-func updateInternal(args *models.Metrics, store service.Storage) error {
+func updateInternal(ctx context.Context, args *models.Metrics, store service.Storage) error {
 	switch args.MType {
 	case models.Gauge:
 		if args.Value == nil {
 			return fmt.Errorf("%w: missing gauge value", errBadRequest)
 		}
-		if err := store.UpdateGauge(args.ID, *args.Value); err != nil {
+		if err := store.UpdateGauge(ctx, args.ID, *args.Value); err != nil {
 			return fmt.Errorf("update gauge: %w", err)
 		}
 	case models.Counter:
 		if args.Delta == nil {
 			return fmt.Errorf("%w: missing counter delta", errBadRequest)
 		}
-		if err := store.UpdateCounter(args.ID, *args.Delta); err != nil {
+		if err := store.UpdateCounter(ctx, args.ID, *args.Delta); err != nil {
 			return fmt.Errorf("update counter: %w", err)
 		}
 	default:

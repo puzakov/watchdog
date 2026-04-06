@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +15,7 @@ import (
 
 func TestValue_Gauge_OK(t *testing.T) {
 	store := service.NewMemStorage()
-	_ = store.UpdateGauge("Alloc", 1.5)
+	_ = store.UpdateGauge(context.Background(), "Alloc", 1.5)
 
 	h := NewHandler(store, &db.DatabaseConnection{})
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Alloc", nil)
@@ -31,7 +32,7 @@ func TestValue_Gauge_OK(t *testing.T) {
 
 func TestValue_Counter_OK(t *testing.T) {
 	store := service.NewMemStorage()
-	_ = store.UpdateCounter("PollCount", 42)
+	_ = store.UpdateCounter(context.Background(), "PollCount", 42)
 
 	h := NewHandler(store, &db.DatabaseConnection{})
 	req := httptest.NewRequest(http.MethodGet, "/value/counter/PollCount", nil)
@@ -76,7 +77,7 @@ func TestValueJSON_Counter_NotFound(t *testing.T) {
 
 func TestValueJSON_Counter_OK_ReturnsJSON(t *testing.T) {
 	store := service.NewMemStorage()
-	_ = store.UpdateCounter("c1", 42)
+	_ = store.UpdateCounter(context.Background(), "c1", 42)
 	h := NewHandler(store, &db.DatabaseConnection{})
 
 	reqBody, _ := json.Marshal(&models.Metrics{ID: "c1", MType: models.Counter})
