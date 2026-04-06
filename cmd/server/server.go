@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"flag"
 	"fmt"
 	"net/http"
 	"time"
@@ -17,13 +18,31 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	var (
+		addr            string
+		storeInterval   int
+		fileStoragePath string
+		restore         bool
+		databaseDsn     string
+	)
+
+	flag.StringVar(&addr, "a", "localhost:8080", "server address")
+	flag.IntVar(&storeInterval, "i", 300, "store interval in seconds")
+	// Путь к файлу по-умолчанию пустой: файловое хранилище включается только
+	// при явном задании флага -f или переменной окружения FILE_STORAGE_PATH.
+	flag.StringVar(&fileStoragePath, "f", "", "file storage path")
+	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
+	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
+	flag.Parse()
+
+	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn)
+
+	if err := run(cfg); err != nil {
 		panic(err)
 	}
 }
 
-func run() error {
-	cfg := config.AppConfig()
+func run(cfg *config.EnvConfig) error {
 	storage := service.NewMemStorage()
 	ctx := context.Background()
 

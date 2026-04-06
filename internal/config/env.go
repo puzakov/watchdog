@@ -1,7 +1,6 @@
 package config
 
 import (
-	"flag"
 	"fmt"
 
 	"github.com/caarlos0/env/v6"
@@ -16,24 +15,7 @@ type EnvConfig struct {
 	DatabaseDsn      string `env:"DATABASE_DSN"`
 }
 
-func AppConfig() *EnvConfig {
-	var (
-		addr            string
-		storeInterval   int
-		fileStoragePath string
-		restore         bool
-		databaseDsn     string
-	)
-
-	flag.StringVar(&addr, "a", "localhost:8080", "server address")
-	flag.IntVar(&storeInterval, "i", 300, "store interval in seconds")
-	// Путь к файлу по-умолчанию пустой: файловое хранилище включается только
-	// при явном задании флага -f или переменной окружения FILE_STORAGE_PATH.
-	flag.StringVar(&fileStoragePath, "f", "", "file storage path")
-	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
-	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
-	flag.Parse()
-
+func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string) *EnvConfig {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
