@@ -3,14 +3,13 @@ package config
 import (
 	"flag"
 	"fmt"
-	"strconv"
 
 	"github.com/caarlos0/env/v6"
 )
 
 type EnvConfig struct {
 	Addr             string `env:"ADDRESS"`
-	StoreInterval    string `env:"STORE_INTERVAL"` // тип string потому что int по-умолчанию 0, это влияет на логику если не задано значение
+	StoreInterval    *int   `env:"STORE_INTERVAL"`
 	StoreIntervalInt int
 	FileStoragePath  string `env:"FILE_STORAGE_PATH"`
 	Restore          bool   `env:"RESTORE"`
@@ -44,12 +43,8 @@ func AppConfig() *EnvConfig {
 	if cfg.Addr != "" {
 		addr = cfg.Addr
 	}
-	if cfg.StoreInterval != "" {
-		if v, err := strconv.Atoi(cfg.StoreInterval); err != nil {
-			fmt.Println(err.Error())
-		} else {
-			storeInterval = v
-		}
+	if cfg.StoreInterval != nil {
+		storeInterval = cfg.StoreIntervalInt
 	}
 	if cfg.FileStoragePath != "" {
 		fileStoragePath = cfg.FileStoragePath
