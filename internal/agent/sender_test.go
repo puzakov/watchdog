@@ -12,7 +12,7 @@ import (
 )
 
 func TestSender_SendGauge_SendsExpectedRequest(t *testing.T) {
-	var gotMethod, gotPath, gotCT, gotCE string
+	var gotMethod, gotPath, gotCT, gotCE, gotHash string
 	var got models.Metrics
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -20,6 +20,7 @@ func TestSender_SendGauge_SendsExpectedRequest(t *testing.T) {
 		gotPath = r.URL.EscapedPath()
 		gotCT = r.Header.Get("Content-Type")
 		gotCE = r.Header.Get("Content-Encoding")
+		gotHash = r.Header.Get("HashSHA256")
 		defer r.Body.Close()
 
 		var body []byte
@@ -42,6 +43,7 @@ func TestSender_SendGauge_SendsExpectedRequest(t *testing.T) {
 	s := NewSender(SenderConfig{
 		ServerAddress: srv.URL,
 		Client:        srv.Client(),
+		Key:           "secret",
 	})
 
 	if err := s.SendGauge("Alloc", 1.5); err != nil {
@@ -59,6 +61,9 @@ func TestSender_SendGauge_SendsExpectedRequest(t *testing.T) {
 	}
 	if gotPath != "/update" {
 		t.Fatalf("path = %q, want %q", gotPath, "/update")
+	}
+	if gotHash == "" {
+		t.Fatalf("HashSHA256 header is empty, want non-empty")
 	}
 	if got.ID != "Alloc" || got.MType != models.Gauge || got.Value == nil || *got.Value != 1.5 || got.Delta != nil {
 		t.Fatalf("unexpected payload: %+v", got)

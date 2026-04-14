@@ -18,6 +18,7 @@ type Config struct {
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	Timeout        time.Duration
+	Key            string
 	Logger         *log.Logger
 }
 
@@ -55,6 +56,7 @@ func New(cfg Config) *Agent {
 			Client: &http.Client{
 				Timeout: cfg.Timeout,
 			},
+			Key:    cfg.Key,
 			Logger: cfg.Logger,
 		}),
 		lastReportedCounters: make(map[string]int64),

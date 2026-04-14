@@ -13,9 +13,10 @@ type EnvConfig struct {
 	FileStoragePath  string `env:"FILE_STORAGE_PATH"`
 	Restore          bool   `env:"RESTORE"`
 	DatabaseDsn      string `env:"DATABASE_DSN"`
+	Key              string `env:"KEY"`
 }
 
-func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string) *EnvConfig {
+func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string) *EnvConfig {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -37,6 +38,9 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 	if cfg.DatabaseDsn != "" {
 		databaseDsn = cfg.DatabaseDsn
 	}
+	if cfg.Key != "" {
+		key = cfg.Key
+	}
 
-	return &EnvConfig{Addr: addr, StoreIntervalInt: storeInterval, FileStoragePath: fileStoragePath, Restore: restore, DatabaseDsn: databaseDsn}
+	return &EnvConfig{Addr: addr, StoreIntervalInt: storeInterval, FileStoragePath: fileStoragePath, Restore: restore, DatabaseDsn: databaseDsn, Key: key}
 }

@@ -24,6 +24,7 @@ func main() {
 		fileStoragePath string
 		restore         bool
 		databaseDsn     string
+		key             string
 	)
 
 	flag.StringVar(&addr, "a", "localhost:8080", "server address")
@@ -33,9 +34,10 @@ func main() {
 	flag.StringVar(&fileStoragePath, "f", "", "file storage path")
 	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
 	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
+	flag.StringVar(&key, "k", "", "SHA256 hash key")
 	flag.Parse()
 
-	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn)
+	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key)
 
 	if err := run(cfg); err != nil {
 		panic(err)
@@ -96,6 +98,7 @@ func run(cfg *config.EnvConfig) error {
 	}
 
 	h := handler.NewHandler(storage, conn)
+	h = middleware.HashSHA256(cfg.Key, h)
 	h = middleware.Gzip(h)
 	h = middleware.LogRequest(h)
 
