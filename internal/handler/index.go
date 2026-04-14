@@ -10,8 +10,8 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-func HandleIndex(store service.Storage, w http.ResponseWriter) {
-	gauges, counters := store.Snapshot()
+func HandleIndex(store service.Storage, w http.ResponseWriter, r *http.Request) {
+	gauges, counters := store.Snapshot(r.Context())
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

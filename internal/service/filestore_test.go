@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,23 +15,23 @@ func TestFileStore_SaveAndRestore(t *testing.T) {
 	path := filepath.Join(dir, "metrics.json")
 
 	s1 := NewMemStorage()
-	s1.UpdateGauge("g1", 1.25)
-	s1.UpdateCounter("c1", 42)
+	_ = s1.UpdateGauge(context.Background(), "g1", 1.25)
+	_ = s1.UpdateCounter(context.Background(), "c1", 42)
 
 	fs := NewFileStore(path)
-	if err := fs.Save(s1.Snapshot()); err != nil {
+	if err := fs.Save(s1.Snapshot(context.Background())); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
 	s2 := NewMemStorage()
-	if err := fs.Restore(s2); err != nil {
+	if err := fs.Restore(context.Background(), s2); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
 
-	if v, ok := s2.GetGauge("g1"); !ok || v != 1.25 {
+	if v, ok := s2.GetGauge(context.Background(), "g1"); !ok || v != 1.25 {
 		t.Fatalf("restored gauge g1 = (%v,%v), want (%v,true)", v, ok, 1.25)
 	}
-	if v, ok := s2.GetCounter("c1"); !ok || v != 42 {
+	if v, ok := s2.GetCounter(context.Background(), "c1"); !ok || v != 42 {
 		t.Fatalf("restored counter c1 = (%v,%v), want (%v,true)", v, ok, int64(42))
 	}
 }
@@ -41,7 +42,7 @@ func TestFileStore_RestoreMissingFileIsOK(t *testing.T) {
 
 	s := NewMemStorage()
 	fs := NewFileStore(path)
-	if err := fs.Restore(s); err != nil {
+	if err := fs.Restore(context.Background(), s); err != nil {
 		t.Fatalf("restore missing file: %v", err)
 	}
 }
@@ -54,7 +55,7 @@ func TestPersistingStorage_SavesOnUpdateWhenIntervalZeroMode(t *testing.T) {
 	fs := NewFileStore(path)
 	s := NewPersistingStorage(base, fs)
 
-	s.UpdateCounter("c1", 7)
+	_ = s.UpdateCounter(context.Background(), "c1", 7)
 
 	b, err := os.ReadFile(path)
 	if err != nil {

@@ -28,14 +28,14 @@ func HandleValue(store service.Storage, w http.ResponseWriter, r *http.Request) 
 
 	switch args.mType {
 	case models.Gauge:
-		v, ok := store.GetGauge(args.name)
+		v, ok := store.GetGauge(r.Context(), args.name)
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 		out = strconv.FormatFloat(v, 'g', -1, 64)
 	case models.Counter:
-		v, ok := store.GetCounter(args.name)
+		v, ok := store.GetCounter(r.Context(), args.name)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -69,14 +69,14 @@ func HandleValueJSON(store service.Storage, w http.ResponseWriter, r *http.Reque
 
 	switch args.MType {
 	case models.Gauge:
-		v, ok := store.GetGauge(args.ID)
+		v, ok := store.GetGauge(r.Context(), args.ID)
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 		args.Value = &v
 	case models.Counter:
-		v, ok := store.GetCounter(args.ID)
+		v, ok := store.GetCounter(r.Context(), args.ID)
 		if !ok {
 			http.NotFound(w, r)
 			return

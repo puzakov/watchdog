@@ -1,12 +1,15 @@
 package agent
 
 import (
+	"context"
+	"errors"
 	"log"
 	"math/rand"
 	"net/http"
 	"strings"
 	"time"
 
+	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
@@ -79,34 +82,73 @@ func (a *Agent) Run() {
 }
 
 func (a *Agent) pollOnce() {
+	ctx := context.Background()
 	gauges := ReadRuntimeGauges()
 	for name, v := range gauges {
-		a.store.UpdateGauge(name, v)
+		_ = a.store.UpdateGauge(ctx, name, v)
 	}
 
-	a.store.UpdateGauge("RandomValue", rand.Float64())
-	a.store.UpdateCounter("PollCount", 1)
+	_ = a.store.UpdateGauge(ctx, "RandomValue", rand.Float64())
+	_ = a.store.UpdateCounter(ctx, "PollCount", 1)
 }
 
 func (a *Agent) reportOnce() {
-	gauges, counters := a.store.Snapshot()
+	ctx := context.Background()
+	gauges, counters := a.store.Snapshot(ctx)
 
+	batch := make([]models.Metrics, 0, len(gauges)+len(counters))
 	for name, v := range gauges {
-		if err := a.sender.SendGauge(name, v); err != nil {
-			a.cfg.Logger.Printf("send gauge %s: %v", name, err)
-		}
+		vv := v
+		batch = append(batch, models.Metrics{ID: name, MType: models.Gauge, Value: &vv})
 	}
 
+	includedCounters := make(map[string]int64)
 	for name, current := range counters {
 		prev := a.lastReportedCounters[name]
 		delta := current - prev
 		if delta == 0 {
 			continue
 		}
-		if err := a.sender.SendCounter(name, delta); err != nil {
-			a.cfg.Logger.Printf("send counter %s: %v", name, err)
-			continue
+		dd := delta
+		batch = append(batch, models.Metrics{ID: name, MType: models.Counter, Delta: &dd})
+		includedCounters[name] = current
+	}
+
+	if len(batch) == 0 {
+		return
+	}
+
+	err := a.sender.SendBatch(batch)
+	if err == nil {
+		for name, current := range includedCounters {
+			a.lastReportedCounters[name] = current
 		}
-		a.lastReportedCounters[name] = current
+		return
+	}
+
+	if errors.Is(err, ErrEndpointUnsupported) {
+		// Backward-compatible fallback for older servers.
+		for _, m := range batch {
+			switch m.MType {
+			case models.Gauge:
+				if m.Value == nil {
+					continue
+				}
+				if err := a.sender.SendGauge(m.ID, *m.Value); err != nil {
+					a.cfg.Logger.Printf("send gauge %s: %v", m.ID, err)
+				}
+			case models.Counter:
+				if m.Delta == nil {
+					continue
+				}
+				if err := a.sender.SendCounter(m.ID, *m.Delta); err != nil {
+					a.cfg.Logger.Printf("send counter %s: %v", m.ID, err)
+					continue
+				}
+				if current, ok := includedCounters[m.ID]; ok {
+					a.lastReportedCounters[m.ID] = current
+				}
+			}
+		}
 	}
 }

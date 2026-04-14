@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,11 +12,12 @@ import (
 
 func TestHandleIndex_ReturnsHTMLAndContainsMetrics(t *testing.T) {
 	store := service.NewMemStorage()
-	store.UpdateGauge("Alloc", 1.5)
-	store.UpdateCounter("PollCount", 2)
+	_ = store.UpdateGauge(context.Background(), "Alloc", 1.5)
+	_ = store.UpdateCounter(context.Background(), "PollCount", 2)
 
 	w := httptest.NewRecorder()
-	HandleIndex(store, w)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	HandleIndex(store, w, req)
 
 	resp := w.Result()
 	err := resp.Body.Close()
