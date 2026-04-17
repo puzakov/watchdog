@@ -14,7 +14,8 @@ func HashSHA256(key string, next http.Handler) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body != nil {
+		got := r.Header.Get(sign.HeaderHashSHA256)
+		if got != "" && r.Body != nil {
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -22,7 +23,6 @@ func HashSHA256(key string, next http.Handler) http.Handler {
 			}
 			_ = r.Body.Close()
 
-			got := r.Header.Get(sign.HeaderHashSHA256)
 			want := sign.SumSHA256(body, key)
 			if got != want {
 				w.WriteHeader(http.StatusBadRequest)
