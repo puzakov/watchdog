@@ -38,7 +38,7 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 	if cfg.DatabaseDsn != "" {
 		databaseDsn = cfg.DatabaseDsn
 	}
-	if key == "" && cfg.Key != "" {
+	if cfg.Key != "" {
 		key = cfg.Key
 	}
 
