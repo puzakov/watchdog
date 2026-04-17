@@ -25,9 +25,15 @@ func main() {
 		key            string
 	)
 
-	flag.StringVar(&addr, "a", "localhost:8080", "server address")
-	flag.IntVar(&pollInterval, "p", 2, "poll interval in seconds")
-	flag.IntVar(&reportInterval, "r", 10, "report interval in seconds")
+	const (
+		defaultAddr           = "localhost:8080"
+		defaultPollInterval   = 2
+		defaultReportInterval = 10
+	)
+
+	flag.StringVar(&addr, "a", defaultAddr, "server address")
+	flag.IntVar(&pollInterval, "p", defaultPollInterval, "poll interval in seconds")
+	flag.IntVar(&reportInterval, "r", defaultReportInterval, "report interval in seconds")
 	flag.StringVar(&key, "k", "", "SHA256 hash key")
 	flag.Parse()
 
@@ -37,16 +43,16 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	if cfg.Addr != "" {
+	if addr == defaultAddr && cfg.Addr != "" {
 		addr = cfg.Addr
 	}
-	if cfg.PollInterval != 0 {
+	if pollInterval == defaultPollInterval && cfg.PollInterval != 0 {
 		pollInterval = cfg.PollInterval
 	}
-	if cfg.ReportInterval != 0 {
+	if reportInterval == defaultReportInterval && cfg.ReportInterval != 0 {
 		reportInterval = cfg.ReportInterval
 	}
-	if cfg.Key != "" {
+	if key == "" && cfg.Key != "" {
 		key = cfg.Key
 	}
 
