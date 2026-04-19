@@ -15,6 +15,7 @@ type EnvConfig struct {
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	Key            string `env:"KEY"`
+	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
 func main() {
@@ -23,12 +24,14 @@ func main() {
 		pollInterval   int
 		reportInterval int
 		key            string
+		rateLimit      int
 	)
 
 	flag.StringVar(&addr, "a", "localhost:8080", "server address")
 	flag.IntVar(&pollInterval, "p", 2, "poll interval in seconds")
 	flag.IntVar(&reportInterval, "r", 10, "report interval in seconds")
 	flag.StringVar(&key, "k", "", "SHA256 hash key")
+	flag.IntVar(&rateLimit, "l", 4, "max concurrent outgoing HTTP requests (worker pool size)")
 	flag.Parse()
 
 	var cfg EnvConfig
@@ -49,6 +52,9 @@ func main() {
 	if cfg.Key != "" {
 		key = cfg.Key
 	}
+	if cfg.RateLimit > 0 {
+		rateLimit = cfg.RateLimit
+	}
 
 	a := agent.New(agent.Config{
 		ServerAddress:  fmt.Sprintf("http://%s", addr),
@@ -56,6 +62,7 @@ func main() {
 		ReportInterval: time.Duration(reportInterval) * time.Second,
 		Timeout:        5 * time.Second, //http request timeout,
 		Key:            key,
+		RateLimit:      rateLimit,
 		Logger:         log.Default(),
 	})
 	a.Run()

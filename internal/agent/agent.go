@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	models "github.com/puzakov/watchdog/internal/model"
@@ -19,7 +20,9 @@ type Config struct {
 	ReportInterval time.Duration
 	Timeout        time.Duration
 	Key            string
-	Logger         *log.Logger
+	// RateLimit is the maximum number of concurrent outgoing HTTP requests (worker pool size).
+	RateLimit int
+	Logger    *log.Logger
 }
 
 type Agent struct {
@@ -27,7 +30,10 @@ type Agent struct {
 	store  service.Storage
 	sender *Sender
 
+	lastReportedMu       sync.Mutex
 	lastReportedCounters map[string]int64
+
+	poolTasks chan func()
 }
 
 func New(cfg Config) *Agent {
@@ -47,6 +53,9 @@ func New(cfg Config) *Agent {
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
 	}
+	if cfg.RateLimit < 1 {
+		cfg.RateLimit = 1
+	}
 
 	return &Agent{
 		cfg:   cfg,
@@ -63,23 +72,75 @@ func New(cfg Config) *Agent {
 	}
 }
 
+// Run starts runtime polling, host metrics polling, reporting, and an HTTP worker pool.
+// Blocks forever (same lifecycle as before).
 func (a *Agent) Run() {
-	pollTicker := time.NewTicker(a.cfg.PollInterval)
-	reportTicker := time.NewTicker(a.cfg.ReportInterval)
-	defer pollTicker.Stop()
-	defer reportTicker.Stop()
+	workers := a.cfg.RateLimit
+	if workers < 1 {
+		workers = 1
+	}
+	a.poolTasks = make(chan func(), workers*64)
+	for i := 0; i < workers; i++ {
+		go a.poolWorker()
+	}
 
-	// Сохраняем прежнее поведение: сразу собираем и сразу отправляем.
-	a.pollOnce()
-	a.reportOnce()
+	go a.pollRuntimeLoop()
+	go a.pollHostLoop()
+	go a.reportLoop()
 
-	for {
-		select {
-		case <-pollTicker.C:
-			a.pollOnce()
-		case <-reportTicker.C:
-			a.reportOnce()
+	select {}
+}
+
+func (a *Agent) poolWorker() {
+	for fn := range a.poolTasks {
+		if fn != nil {
+			fn()
 		}
+	}
+}
+
+func (a *Agent) runPooled(fn func() error) error {
+	if a.poolTasks == nil {
+		return fn()
+	}
+	errCh := make(chan error, 1)
+	a.poolTasks <- func() {
+		errCh <- fn()
+	}
+	return <-errCh
+}
+
+func (a *Agent) pollRuntimeLoop() {
+	a.pollOnce()
+	t := time.NewTicker(a.cfg.PollInterval)
+	defer t.Stop()
+	for range t.C {
+		a.pollOnce()
+	}
+}
+
+func (a *Agent) pollHostLoop() {
+	ctx := context.Background()
+	a.collectHostOnce(ctx)
+	t := time.NewTicker(a.cfg.PollInterval)
+	defer t.Stop()
+	for range t.C {
+		a.collectHostOnce(ctx)
+	}
+}
+
+func (a *Agent) collectHostOnce(ctx context.Context) {
+	for name, v := range CollectHostGauges(ctx) {
+		_ = a.store.UpdateGauge(ctx, name, v)
+	}
+}
+
+func (a *Agent) reportLoop() {
+	a.reportOnce()
+	t := time.NewTicker(a.cfg.ReportInterval)
+	defer t.Stop()
+	for range t.C {
+		a.reportOnce()
 	}
 }
 
@@ -104,6 +165,7 @@ func (a *Agent) reportOnce() {
 		batch = append(batch, models.Metrics{ID: name, MType: models.Gauge, Value: &vv})
 	}
 
+	a.lastReportedMu.Lock()
 	includedCounters := make(map[string]int64)
 	for name, current := range counters {
 		prev := a.lastReportedCounters[name]
@@ -115,42 +177,67 @@ func (a *Agent) reportOnce() {
 		batch = append(batch, models.Metrics{ID: name, MType: models.Counter, Delta: &dd})
 		includedCounters[name] = current
 	}
+	a.lastReportedMu.Unlock()
 
 	if len(batch) == 0 {
 		return
 	}
 
-	err := a.sender.SendBatch(batch)
+	err := a.runPooled(func() error {
+		return a.sender.SendBatch(batch)
+	})
 	if err == nil {
+		a.lastReportedMu.Lock()
 		for name, current := range includedCounters {
 			a.lastReportedCounters[name] = current
 		}
+		a.lastReportedMu.Unlock()
 		return
 	}
 
-	if errors.Is(err, ErrEndpointUnsupported) {
-		// Backward-compatible fallback for older servers.
-		for _, m := range batch {
+	if !errors.Is(err, ErrEndpointUnsupported) {
+		a.cfg.Logger.Printf("send batch: %v", err)
+		return
+	}
+
+	// Backward-compatible fallback: parallel single-metric sends, bounded by worker pool.
+	var wg sync.WaitGroup
+	for _, m := range batch {
+		m := m
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var sendErr error
 			switch m.MType {
 			case models.Gauge:
 				if m.Value == nil {
-					continue
+					return
 				}
-				if err := a.sender.SendGauge(m.ID, *m.Value); err != nil {
-					a.cfg.Logger.Printf("send gauge %s: %v", m.ID, err)
-				}
+				sendErr = a.runPooled(func() error {
+					return a.sender.SendGauge(m.ID, *m.Value)
+				})
 			case models.Counter:
 				if m.Delta == nil {
-					continue
+					return
 				}
-				if err := a.sender.SendCounter(m.ID, *m.Delta); err != nil {
-					a.cfg.Logger.Printf("send counter %s: %v", m.ID, err)
-					continue
-				}
+				sendErr = a.runPooled(func() error {
+					return a.sender.SendCounter(m.ID, *m.Delta)
+				})
+			default:
+				return
+			}
+			if sendErr != nil {
+				a.cfg.Logger.Printf("send metric %s: %v", m.ID, sendErr)
+				return
+			}
+			if m.MType == models.Counter {
 				if current, ok := includedCounters[m.ID]; ok {
+					a.lastReportedMu.Lock()
 					a.lastReportedCounters[m.ID] = current
+					a.lastReportedMu.Unlock()
 				}
 			}
-		}
+		}()
 	}
+	wg.Wait()
 }
