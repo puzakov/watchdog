@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
@@ -13,6 +17,7 @@ import (
 	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/db/migrations"
 	"github.com/puzakov/watchdog/internal/handler"
+	"github.com/puzakov/watchdog/internal/logger"
 	"github.com/puzakov/watchdog/internal/middleware"
 	"github.com/puzakov/watchdog/internal/service"
 )
@@ -38,9 +43,11 @@ func main() {
 	flag.Parse()
 
 	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key)
+	_ = logger.Initialize("info")
 
 	if err := run(cfg); err != nil {
-		panic(err)
+		logger.Log.Error(err.Error())
+		os.Exit(1)
 	}
 }
 
@@ -60,7 +67,7 @@ func run(cfg *config.EnvConfig) error {
 	if cfg.DatabaseDsn != "" {
 		c, err := db.NewDatabaseConnection(ctx, cfg.DatabaseDsn)
 		if err != nil {
-			fmt.Println(err.Error())
+			logger.Log.Error(err.Error())
 		} else {
 			conn = c
 			defer conn.Close()
@@ -102,5 +109,34 @@ func run(cfg *config.EnvConfig) error {
 	h = middleware.Gzip(h)
 	h = middleware.LogRequest(h)
 
-	return http.ListenAndServe(cfg.Addr, h)
+	srv := &http.Server{Addr: cfg.Addr, Handler: h}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	case <-quit:
+		logger.Log.Info("shutting down server")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown: %w", err)
+		}
+		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
 }
