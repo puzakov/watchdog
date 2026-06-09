@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/config"
 	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/db/migrations"
@@ -30,6 +31,8 @@ func main() {
 		restore         bool
 		databaseDsn     string
 		key             string
+		auditFile       string
+		auditURL        string
 	)
 
 	flag.StringVar(&addr, "a", "localhost:8080", "server address")
@@ -40,9 +43,11 @@ func main() {
 	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
 	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
 	flag.StringVar(&key, "k", "", "SHA256 hash key")
+	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
+	flag.StringVar(&auditURL, "audit-url", "", "audit log URL")
 	flag.Parse()
 
-	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key)
+	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key, auditFile, auditURL)
 	_ = logger.Initialize("info")
 
 	if err := run(cfg); err != nil {
@@ -104,7 +109,18 @@ func run(cfg *config.EnvConfig) error {
 		}
 	}
 
-	h := handler.NewHandler(storage, conn)
+	var auditor *audit.Subject
+	if cfg.AuditFile != "" || cfg.AuditURL != "" {
+		auditor = audit.NewSubject()
+		if cfg.AuditFile != "" {
+			auditor.Subscribe(audit.NewFileObserver(cfg.AuditFile))
+		}
+		if cfg.AuditURL != "" {
+			auditor.Subscribe(audit.NewURLObserver(cfg.AuditURL))
+		}
+	}
+
+	h := handler.NewHandler(storage, conn, auditor)
 	h = middleware.HashSHA256(cfg.Key, h)
 	h = middleware.Gzip(h)
 	h = middleware.LogRequest(h)

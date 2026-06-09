@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/logger"
 	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/service"
@@ -18,7 +19,7 @@ import (
 
 var errBadRequest = errors.New("bad request")
 
-func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request) {
+func HandleUpdate(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	args := models.Metrics{
 		MType: chi.URLParam(r, "type"),
 		ID:    chi.URLParam(r, "name"),
@@ -54,10 +55,11 @@ func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	auditor.Notify([]string{args.ID}, audit.ClientIP(r))
 	w.WriteHeader(http.StatusOK)
 }
 
-func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Request) {
+func HandleUpdateJSON(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "application/json") {
 		logger.Log.Debug("Invalid content type", zap.String("Content-Type", ct))
@@ -79,6 +81,7 @@ func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	auditor.Notify([]string{args.ID}, audit.ClientIP(r))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -90,7 +93,7 @@ func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Request) {
+func HandleUpdatesJSON(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "application/json") {
 		logger.Log.Debug("Invalid content type", zap.String("Content-Type", ct))
@@ -119,6 +122,7 @@ func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	auditor.Notify(metricIDs(batch), audit.ClientIP(r))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -209,6 +213,17 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 	}
 
 	return out, nil
+}
+
+func metricIDs(metrics []models.Metrics) []string {
+	if len(metrics) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(metrics))
+	for _, m := range metrics {
+		ids = append(ids, m.ID)
+	}
+	return ids
 }
 
 func writeUpdateError(w http.ResponseWriter, err error) {
