@@ -16,6 +16,7 @@ import (
 	"time"
 
 	models "github.com/puzakov/watchdog/internal/model"
+	"github.com/puzakov/watchdog/internal/sign"
 )
 
 var ErrEndpointUnsupported = errors.New("endpoint unsupported")
@@ -25,6 +26,7 @@ var httpRetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time
 type SenderConfig struct {
 	ServerAddress string
 	Client        *http.Client
+	Key           string
 	Logger        *log.Logger
 }
 
@@ -81,6 +83,9 @@ func (s *Sender) postJSON(path string, payload any) error {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
+		if s.cfg.Key != "" {
+			req.Header.Set(sign.HeaderHashSHA256, sign.SumSHA256(body, s.cfg.Key))
+		}
 
 		resp, err := s.cfg.Client.Do(req)
 		if err != nil {
