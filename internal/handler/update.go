@@ -165,29 +165,21 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 		mtype string
 	}
 
-	// preserve order of first appearance
-	order := make([]key, 0, len(in))
 	gauges := make(map[key]float64, len(in))
 	counters := make(map[key]int64, len(in))
 
-	seen := make(map[key]struct{}, len(in))
 	for _, m := range in {
 		if m.ID == "" || m.MType == "" {
 			return nil, fmt.Errorf("%w: invalid metric: empty id/type", errBadRequest)
 		}
 
 		k := key{id: m.ID, mtype: m.MType}
-		if _, ok := seen[k]; !ok {
-			seen[k] = struct{}{}
-			order = append(order, k)
-		}
-
 		switch m.MType {
 		case models.Gauge:
 			if m.Value == nil {
 				return nil, fmt.Errorf("%w: invalid gauge metric %q: missing value", errBadRequest, m.ID)
 			}
-			gauges[k] = *m.Value // last wins
+			gauges[k] = *m.Value
 		case models.Counter:
 			if m.Delta == nil {
 				return nil, fmt.Errorf("%w: invalid counter metric %q: missing delta", errBadRequest, m.ID)
@@ -198,18 +190,14 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 		}
 	}
 
-	out := make([]models.Metrics, 0, len(order))
-	for _, k := range order {
-		switch k.mtype {
-		case models.Gauge:
-			v := gauges[k]
-			vv := v
-			out = append(out, models.Metrics{ID: k.id, MType: models.Gauge, Value: &vv})
-		case models.Counter:
-			d := counters[k]
-			dd := d
-			out = append(out, models.Metrics{ID: k.id, MType: models.Counter, Delta: &dd})
-		}
+	out := make([]models.Metrics, 0, len(gauges)+len(counters))
+	for k, v := range gauges {
+		vv := v
+		out = append(out, models.Metrics{ID: k.id, MType: models.Gauge, Value: &vv})
+	}
+	for k, d := range counters {
+		dd := d
+		out = append(out, models.Metrics{ID: k.id, MType: models.Counter, Delta: &dd})
 	}
 
 	return out, nil

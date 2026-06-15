@@ -5,7 +5,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
+
+var gzipWriterPool = sync.Pool{
+	New: func() any {
+		w, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
+		return w
+	},
+}
 
 type gzipResponseWriter struct {
 	http.ResponseWriter
@@ -21,13 +29,12 @@ func (w *gzipResponseWriter) init() {
 
 	ct := w.Header().Get("Content-Type")
 	if strings.HasPrefix(ct, "application/json") || strings.HasPrefix(ct, "text/html") {
-		gzw, err := gzip.NewWriterLevel(w.ResponseWriter, gzip.BestSpeed)
-		if err == nil {
-			w.gzw = gzw
-			w.compress = true
-			w.Header().Set("Content-Encoding", "gzip")
-			w.Header().Add("Vary", "Accept-Encoding")
-		}
+		gzw := gzipWriterPool.Get().(*gzip.Writer)
+		gzw.Reset(w.ResponseWriter)
+		w.gzw = gzw
+		w.compress = true
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
 	}
 
 	w.isInit = true
@@ -70,6 +77,8 @@ func Gzip(next http.Handler) http.Handler {
 		defer func() {
 			if grw.gzw != nil {
 				_ = grw.gzw.Close()
+				gzipWriterPool.Put(grw.gzw)
+				grw.gzw = nil
 			}
 		}()
 

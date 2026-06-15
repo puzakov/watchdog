@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -33,6 +34,7 @@ func main() {
 		key             string
 		auditFile       string
 		auditURL        string
+		pprofAddr       string
 	)
 
 	flag.StringVar(&addr, "a", "localhost:8080", "server address")
@@ -45,18 +47,19 @@ func main() {
 	flag.StringVar(&key, "k", "", "SHA256 hash key")
 	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
 	flag.StringVar(&auditURL, "audit-url", "", "audit log URL")
+	flag.StringVar(&pprofAddr, "pprof", "", "pprof listen address (e.g. localhost:6060)")
 	flag.Parse()
 
 	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key, auditFile, auditURL)
 	_ = logger.Initialize("info")
 
-	if err := run(cfg); err != nil {
+	if err := run(cfg, pprofAddr); err != nil {
 		logger.Log.Error(err.Error())
 		os.Exit(1)
 	}
 }
 
-func run(cfg *config.EnvConfig) error {
+func run(cfg *config.EnvConfig, pprofAddr string) error {
 	storage := service.NewMemStorage()
 	ctx := context.Background()
 
@@ -126,6 +129,15 @@ func run(cfg *config.EnvConfig) error {
 	h = middleware.LogRequest(h)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: h}
+
+	if pprofAddr != "" {
+		go func() {
+			logger.Log.Info("pprof server started on " + pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				logger.Log.Error("pprof server: " + err.Error())
+			}
+		}()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

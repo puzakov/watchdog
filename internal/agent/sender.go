@@ -12,12 +12,25 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/sign"
 )
+
+var gzipBufPool = sync.Pool{
+	New: func() any {
+		return bytes.NewBuffer(make([]byte, 0, 1024))
+	},
+}
+
+var gzipWriterPool = sync.Pool{
+	New: func() any {
+		return gzip.NewWriter(io.Discard)
+	},
+}
 
 var ErrEndpointUnsupported = errors.New("endpoint unsupported")
 
@@ -113,16 +126,25 @@ func (s *Sender) postJSON(path string, payload any) error {
 }
 
 func gzipBytes(b []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	gzw := gzip.NewWriter(&buf)
+	buf := gzipBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer gzipBufPool.Put(buf)
+
+	gzw := gzipWriterPool.Get().(*gzip.Writer)
+	gzw.Reset(buf)
 	if _, err := gzw.Write(b); err != nil {
-		_ = gzw.Close()
+		gzipWriterPool.Put(gzw)
 		return nil, err
 	}
 	if err := gzw.Close(); err != nil {
+		gzipWriterPool.Put(gzw)
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	gzipWriterPool.Put(gzw)
+
+	out := make([]byte, buf.Len())
+	copy(out, buf.Bytes())
+	return out, nil
 }
 
 func isRetriableConnectError(err error) bool {
