@@ -9,6 +9,15 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
+// NewHandler creates the HTTP handler with the following routes:
+//
+//	GET  /                      — HTML page with all metrics
+//	GET  /ping                  — database health check
+//	POST /value                 — get metric value (JSON)
+//	GET  /value/{type}/{name}   — get metric value (plain text)
+//	POST /update                — update single metric (JSON)
+//	POST /update/{type}/{name}/{value} — update single metric (text/plain)
+//	POST /updates               — batch update (JSON)
 func NewHandler(store service.Storage, conn *db.DatabaseConnection, auditor *audit.Subject) http.Handler {
 	router := chi.NewRouter()
 

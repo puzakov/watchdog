@@ -13,12 +13,15 @@ import (
 	models "github.com/puzakov/watchdog/internal/model"
 )
 
+// PostgresStorage implements Storage backed by PostgreSQL.
+// Uses INSERT ... ON CONFLICT DO UPDATE (upsert) with retries on connection errors.
 type PostgresStorage struct {
 	pool *pgxpool.Pool
 }
 
 var pgRetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
+// NewPostgresStorage creates a PostgresStorage using the given connection pool.
 func NewPostgresStorage(pool *pgxpool.Pool) *PostgresStorage {
 	return &PostgresStorage{pool: pool}
 }

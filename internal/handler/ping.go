@@ -8,6 +8,7 @@ import (
 	"github.com/puzakov/watchdog/internal/db"
 )
 
+// HandlePing checks database connectivity. Returns 200 if healthy, 500 otherwise.
 func HandlePing(conn *db.DatabaseConnection, w http.ResponseWriter) {
 	if conn == nil {
 		w.WriteHeader(http.StatusInternalServerError)

@@ -11,6 +11,8 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
+// HandleIndex renders an HTML page listing all stored metrics, grouped by type.
+// Gauges and counters are each rendered in a sorted list.
 func HandleIndex(store service.Storage, w http.ResponseWriter, r *http.Request) {
 	gauges, counters := store.Snapshot(r.Context())
 

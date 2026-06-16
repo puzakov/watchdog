@@ -7,11 +7,13 @@ import (
 	"time"
 )
 
+// URLObserver sends audit events as HTTP POST requests to a configured URL.
 type URLObserver struct {
 	url    string
 	client *http.Client
 }
 
+// NewURLObserver creates a URLObserver that POSTs events to the given URL.
 func NewURLObserver(url string) *URLObserver {
 	return &URLObserver{
 		url: url,

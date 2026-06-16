@@ -18,6 +18,8 @@ type ValueArgs struct {
 	name  string
 }
 
+// HandleValue returns a metric value as plain text from URL parameters.
+// Expected URL: /value/{type}/{name}. Returns 404 if the metric does not exist.
 func HandleValue(store service.Storage, w http.ResponseWriter, r *http.Request) {
 	var out string
 
@@ -51,6 +53,8 @@ func HandleValue(store service.Storage, w http.ResponseWriter, r *http.Request) 
 	_, _ = w.Write([]byte(out))
 }
 
+// HandleValueJSON returns a metric value as JSON.
+// Expected Content-Type: application/json. Returns 404 if the metric does not exist.
 func HandleValueJSON(store service.Storage, w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "application/json") {

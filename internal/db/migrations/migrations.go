@@ -10,6 +10,7 @@ import (
 //go:embed *.sql
 var fs embed.FS
 
+// Up applies all pending SQL migrations using goose.
 func Up(db *sql.DB) error {
 	goose.SetBaseFS(fs)
 	if err := goose.SetDialect("postgres"); err != nil {

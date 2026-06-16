@@ -19,6 +19,8 @@ import (
 
 var errBadRequest = errors.New("bad request")
 
+// HandleUpdate processes a single metric update from URL parameters.
+// Expected URL: /update/{type}/{name}/{value} with Content-Type: text/plain.
 func HandleUpdate(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	args := models.Metrics{
 		MType: chi.URLParam(r, "type"),
@@ -59,6 +61,8 @@ func HandleUpdate(store service.Storage, auditor *audit.Subject, w http.Response
 	w.WriteHeader(http.StatusOK)
 }
 
+// HandleUpdateJSON processes a single metric update from a JSON request body.
+// Expected Content-Type: application/json. Returns the updated metric as JSON.
 func HandleUpdateJSON(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "application/json") {
@@ -93,6 +97,9 @@ func HandleUpdateJSON(store service.Storage, auditor *audit.Subject, w http.Resp
 	}
 }
 
+// HandleUpdatesJSON processes a batch of metrics from a JSON request body.
+// Duplicates are deduplicated: gauges take the last value, counters accumulate deltas.
+// Expected Content-Type: application/json.
 func HandleUpdatesJSON(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "application/json") {

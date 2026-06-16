@@ -12,15 +12,20 @@ import (
 	models "github.com/puzakov/watchdog/internal/model"
 )
 
+// FileStore persists metrics to a JSON file on disk.
+// It uses atomic file writes (write to .tmp, then rename).
 type FileStore struct {
 	path string
 	mu   sync.Mutex
 }
 
+// NewFileStore creates a FileStore that writes to the given path.
 func NewFileStore(path string) *FileStore {
 	return &FileStore{path: path}
 }
 
+// Save writes all gauges and counters to the file as a JSON array of Metrics.
+// Writes to a .tmp file first, then renames atomically.
 func (fs *FileStore) Save(gauges map[string]float64, counters map[string]int64) error {
 	if fs == nil || fs.path == "" {
 		return nil
@@ -72,6 +77,8 @@ func (fs *FileStore) Save(gauges map[string]float64, counters map[string]int64) 
 	return os.Rename(tmp, fs.path)
 }
 
+// Restore reads metrics from the file and loads them into the given Storage.
+// If the file is empty or does not exist, it returns nil.
 func (fs *FileStore) Restore(ctx context.Context, storage Storage) error {
 	if fs == nil || fs.path == "" {
 		return nil
@@ -113,11 +120,14 @@ func (fs *FileStore) Restore(ctx context.Context, storage Storage) error {
 	return nil
 }
 
+// PersistingStorage wraps any Storage with a FileStore, writing to file
+// on every mutation (UpdateGauge, UpdateCounter, UpdateBatch).
 type PersistingStorage struct {
 	Storage
 	fs *FileStore
 }
 
+// NewPersistingStorage wraps inner Storage so every write is also saved to the FileStore.
 func NewPersistingStorage(inner Storage, fs *FileStore) *PersistingStorage {
 	return &PersistingStorage{Storage: inner, fs: fs}
 }

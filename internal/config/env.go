@@ -6,6 +6,8 @@ import (
 	"github.com/caarlos0/env/v6"
 )
 
+// EnvConfig holds server configuration populated from environment variables and flags.
+// Environment variables take precedence over flag defaults.
 type EnvConfig struct {
 	Addr             string `env:"ADDRESS"`
 	StoreInterval    *int   `env:"STORE_INTERVAL"`
@@ -18,6 +20,8 @@ type EnvConfig struct {
 	AuditURL         string `env:"AUDIT_URL"`
 }
 
+// AppConfig merges flag-provided values with environment variables (env takes precedence)
+// and returns a fully populated EnvConfig.
 func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string) *EnvConfig {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)

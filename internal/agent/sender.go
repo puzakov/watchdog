@@ -32,21 +32,30 @@ var gzipWriterPool = sync.Pool{
 	},
 }
 
+// ErrEndpointUnsupported is returned when the server does not support the
+// target endpoint (404 or 405). Triggers a fallback to legacy single-metric sends.
 var ErrEndpointUnsupported = errors.New("endpoint unsupported")
 
 var httpRetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
+// SenderConfig configures the HTTP metrics sender.
 type SenderConfig struct {
+	// ServerAddress is the base URL of the metrics server.
 	ServerAddress string
-	Client        *http.Client
-	Key           string
-	Logger        *log.Logger
+	// Client is the HTTP client used for requests. If nil, http.DefaultClient is used.
+	Client *http.Client
+	// Key for SHA256 request signing (empty = no signing).
+	Key string
+	// Logger for diagnostics. If nil, log.Default() is used.
+	Logger *log.Logger
 }
 
+// Sender sends metrics to the server over HTTP with gzip compression and optional SHA256 signing.
 type Sender struct {
 	cfg SenderConfig
 }
 
+// NewSender creates a Sender with the given configuration.
 func NewSender(cfg SenderConfig) *Sender {
 	if cfg.ServerAddress == "" {
 		cfg.ServerAddress = "http://localhost:8080"
@@ -61,14 +70,19 @@ func NewSender(cfg SenderConfig) *Sender {
 	return &Sender{cfg: cfg}
 }
 
+// SendGauge sends a single gauge metric to the /update endpoint.
 func (s *Sender) SendGauge(name string, value float64) error {
 	return s.postJSON("/update", &models.Metrics{ID: name, MType: models.Gauge, Value: &value})
 }
 
+// SendCounter sends a single counter metric to the /update endpoint.
 func (s *Sender) SendCounter(name string, delta int64) error {
 	return s.postJSON("/update", &models.Metrics{ID: name, MType: models.Counter, Delta: &delta})
 }
 
+// SendBatch sends a batch of metrics to the /updates endpoint.
+// If the endpoint is unsupported, returns ErrEndpointUnsupported
+// (the caller should fall back to single-metric sends).
 func (s *Sender) SendBatch(metrics []models.Metrics) error {
 	if len(metrics) == 0 {
 		return nil

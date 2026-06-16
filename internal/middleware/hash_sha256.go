@@ -15,6 +15,10 @@ var brwPool = sync.Pool{
 	},
 }
 
+// HashSHA256 is HTTP middleware that validates and signs requests/responses
+// with a SHA256 hash of the body concatenated with the key.
+// If key is empty, the middleware is a no-op.
+// The hash is transmitted via the HashSHA256 header.
 func HashSHA256(key string, next http.Handler) http.Handler {
 	if key == "" {
 		return next
