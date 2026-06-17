@@ -128,3 +128,33 @@ func TestSubject_NoObservers(t *testing.T) {
 	subject.Shutdown()
 	// just must not panic
 }
+
+func TestNewFileObserver_BadPath(t *testing.T) {
+	// An observer with a bad path shouldn't panic; it just discards events silently.
+	obs := NewFileObserver("/nonexistent/dir/audit.log")
+	if obs == nil {
+		t.Fatal("NewFileObserver with bad path returned nil")
+	}
+	// Should not panic
+	obs.Notify(Event{TS: 123, Metrics: []string{"m1"}})
+	_ = obs.Close()
+}
+
+func TestFileObserver_CloseOnNilFile(t *testing.T) {
+	obs := &FileObserver{}
+	if err := obs.Close(); err != nil {
+		t.Fatalf("Close on empty observer: %v", err)
+	}
+}
+
+func TestSubscribe_NilObserver(t *testing.T) {
+	subject := NewSubject()
+	subject.Subscribe(nil) // must not panic
+	subject.Shutdown()
+}
+
+func TestSubscribe_AfterShutdown(t *testing.T) {
+	subject := NewSubject()
+	subject.Shutdown()
+	subject.Subscribe(&captureObserver{}) // should just log a warning
+}

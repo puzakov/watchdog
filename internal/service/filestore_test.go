@@ -78,3 +78,114 @@ func TestPersistingStorage_SavesOnUpdateWhenIntervalZeroMode(t *testing.T) {
 		t.Fatalf("saved file does not contain expected counter metric c1=7, got=%+v", got)
 	}
 }
+
+func TestPersistingStorage_UpdateGaugeSaves(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "metrics.json")
+	base := NewMemStorage()
+	fs := NewFileStore(path)
+	s := NewPersistingStorage(base, fs)
+
+	_ = s.UpdateGauge(context.Background(), "g1", 3.14)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+	var got []models.Metrics
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	found := false
+	for _, m := range got {
+		if m.ID == "g1" && m.MType == models.Gauge && m.Value != nil && *m.Value == 3.14 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("saved file does not contain gauge g1=3.14, got=%+v", got)
+	}
+}
+
+func TestPersistingStorage_UpdateBatchSaves(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "metrics.json")
+	base := NewMemStorage()
+	fs := NewFileStore(path)
+	s := NewPersistingStorage(base, fs)
+
+	gaugeVal := 2.71
+	counterVal := int64(3)
+	batch := []models.Metrics{
+		{ID: "gx", MType: models.Gauge, Value: &gaugeVal},
+		{ID: "cx", MType: models.Counter, Delta: &counterVal},
+	}
+	if err := s.UpdateBatch(context.Background(), batch); err != nil {
+		t.Fatalf("UpdateBatch error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+	var got []models.Metrics
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("saved file contains %d metrics, want 2", len(got))
+	}
+}
+
+func TestFileStore_SaveNilReceiver(t *testing.T) {
+	var fs *FileStore
+	err := fs.Save(nil, nil)
+	if err != nil {
+		t.Fatalf("Save on nil receiver should return nil, got %v", err)
+	}
+}
+
+func TestFileStore_RestoreNilReceiver(t *testing.T) {
+	var fs *FileStore
+	ctx := context.Background()
+	storage := NewMemStorage()
+	err := fs.Restore(ctx, storage)
+	if err != nil {
+		t.Fatalf("Restore on nil receiver should return nil, got %v", err)
+	}
+}
+
+func TestFileStore_RestoreEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.json")
+	fs := NewFileStore(path)
+	if err := os.WriteFile(path, []byte{}, 0666); err != nil {
+		t.Fatalf("write empty file: %v", err)
+	}
+	storage := NewMemStorage()
+	if err := fs.Restore(context.Background(), storage); err != nil {
+		t.Fatalf("Restore empty file: %v", err)
+	}
+}
+
+func TestFileStore_RestoreInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.json")
+	fs := NewFileStore(path)
+	if err := os.WriteFile(path, []byte("not json"), 0666); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	storage := NewMemStorage()
+	if err := fs.Restore(context.Background(), storage); err == nil {
+		t.Fatal("Restore invalid JSON should return error")
+	}
+}
+
+func TestFileStore_RestoreWithEmptyPath(t *testing.T) {
+	fs := NewFileStore("")
+	err := fs.Restore(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Restore with empty path should return nil, got %v", err)
+	}
+}

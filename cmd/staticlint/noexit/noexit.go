@@ -53,7 +53,7 @@ var Analyzer = &analysis.Analyzer{
 
 // run is the main analysis function. It traverses the AST of each file
 // in the analyzed package, looking for os.Exit calls inside the main function.
-func run(pass *analysis.Pass) (interface{}, error) {
+func run(pass *analysis.Pass) (any, error) {
 	if pass.Pkg.Name() != "main" {
 		return nil, nil
 	}
