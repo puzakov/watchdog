@@ -113,16 +113,21 @@ func run(cfg *config.EnvConfig, pprofAddr string) error {
 	}
 
 	var auditor *audit.Subject
+	var fileObserver *audit.FileObserver
 	if cfg.AuditFile != "" || cfg.AuditURL != "" {
 		auditor = audit.NewSubject()
 		if cfg.AuditFile != "" {
-			auditor.Subscribe(audit.NewFileObserver(cfg.AuditFile))
+			fileObserver = audit.NewFileObserver(cfg.AuditFile)
+			auditor.Subscribe(fileObserver)
 		}
 		if cfg.AuditURL != "" {
 			auditor.Subscribe(audit.NewURLObserver(cfg.AuditURL))
 		}
 	}
-	defer auditor.Shutdown()
+	defer func() {
+		_ = fileObserver.Close()
+		auditor.Shutdown()
+	}()
 
 	h := handler.NewHandler(storage, conn, auditor)
 	h = middleware.HashSHA256(cfg.Key, h)

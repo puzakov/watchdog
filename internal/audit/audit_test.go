@@ -46,9 +46,11 @@ func TestSubject_NotifyAllObservers(t *testing.T) {
 	defer fileServer.Close()
 
 	auditFile := filepath.Join(t.TempDir(), "audit.log")
-	subject := NewSubject(NewFileObserver(auditFile), NewURLObserver(fileServer.URL))
+	fileObs := NewFileObserver(auditFile)
+	subject := NewSubject(fileObs, NewURLObserver(fileServer.URL))
 	subject.Notify([]string{"Alloc", "Frees"}, "192.168.0.42")
 	subject.Shutdown()
+	_ = fileObs.Close()
 
 	data, err := os.ReadFile(auditFile)
 	if err != nil {
