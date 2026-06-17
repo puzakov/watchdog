@@ -1,3 +1,5 @@
+// Package agent implements the metrics collection agent that polls Go runtime
+// and host metrics and sends them to a metrics server.
 package agent
 
 import (

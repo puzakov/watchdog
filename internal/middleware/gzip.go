@@ -1,3 +1,5 @@
+// Package middleware provides HTTP middleware components:
+// request logging, gzip compression/decompression, and SHA256 hash verification.
 package middleware
 
 import (

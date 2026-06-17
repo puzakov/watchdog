@@ -1,3 +1,5 @@
+// Package handler provides HTTP request handlers for the metrics API,
+// including routes for updating, retrieving, and listing metrics.
 package handler
 
 import (

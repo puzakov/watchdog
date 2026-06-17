@@ -1,3 +1,5 @@
+// Package db provides PostgreSQL connection management using pgx/v5
+// with reconnection support for transient errors.
 package db
 
 import (

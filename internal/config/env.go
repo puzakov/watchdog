@@ -1,3 +1,5 @@
+// Package config provides server configuration parsing from command-line flags
+// and environment variables using the caarlos0/env library.
 package config
 
 import (

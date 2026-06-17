@@ -1,3 +1,5 @@
+// Package logger provides a global zap.Logger instance with lazy initialization.
+// It defaults to a no-op logger until Initialize is called.
 package logger
 
 import (

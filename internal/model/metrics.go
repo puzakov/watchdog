@@ -1,3 +1,5 @@
+// Package models defines the Metrics data structure used across the application
+// for representing gauge and counter metrics with optional hashing.
 package models
 
 // Metric type constants.

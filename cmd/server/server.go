@@ -55,7 +55,7 @@ func main() {
 
 	if err := run(cfg, pprofAddr); err != nil {
 		logger.Log.Error(err.Error())
-		os.Exit(1)
+		return
 	}
 }
 

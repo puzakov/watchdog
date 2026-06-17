@@ -1,3 +1,5 @@
+// Package sign provides SHA256 request/response signing utilities
+// used by the HashSHA256 middleware for integrity verification.
 package sign
 
 import (
