@@ -7,12 +7,14 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/config"
 	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/db/migrations"
@@ -30,6 +32,9 @@ func main() {
 		restore         bool
 		databaseDsn     string
 		key             string
+		auditFile       string
+		auditURL        string
+		pprofAddr       string
 	)
 
 	flag.StringVar(&addr, "a", "localhost:8080", "server address")
@@ -40,18 +45,21 @@ func main() {
 	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
 	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
 	flag.StringVar(&key, "k", "", "SHA256 hash key")
+	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
+	flag.StringVar(&auditURL, "audit-url", "", "audit log URL")
+	flag.StringVar(&pprofAddr, "pprof", "", "pprof listen address (e.g. localhost:6060)")
 	flag.Parse()
 
-	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key)
+	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key, auditFile, auditURL)
 	_ = logger.Initialize("info")
 
-	if err := run(cfg); err != nil {
+	if err := run(cfg, pprofAddr); err != nil {
 		logger.Log.Error(err.Error())
 		os.Exit(1)
 	}
 }
 
-func run(cfg *config.EnvConfig) error {
+func run(cfg *config.EnvConfig, pprofAddr string) error {
 	storage := service.NewMemStorage()
 	ctx := context.Background()
 
@@ -104,12 +112,38 @@ func run(cfg *config.EnvConfig) error {
 		}
 	}
 
-	h := handler.NewHandler(storage, conn)
+	var auditor *audit.Subject
+	var fileObserver *audit.FileObserver
+	if cfg.AuditFile != "" || cfg.AuditURL != "" {
+		auditor = audit.NewSubject()
+		if cfg.AuditFile != "" {
+			fileObserver = audit.NewFileObserver(cfg.AuditFile)
+			auditor.Subscribe(fileObserver)
+		}
+		if cfg.AuditURL != "" {
+			auditor.Subscribe(audit.NewURLObserver(cfg.AuditURL))
+		}
+	}
+	defer func() {
+		_ = fileObserver.Close()
+		auditor.Shutdown()
+	}()
+
+	h := handler.NewHandler(storage, conn, auditor)
 	h = middleware.HashSHA256(cfg.Key, h)
 	h = middleware.Gzip(h)
 	h = middleware.LogRequest(h)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: h}
+
+	if pprofAddr != "" {
+		go func() {
+			logger.Log.Info("pprof server started on " + pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				logger.Log.Error("pprof server: " + err.Error())
+			}
+		}()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

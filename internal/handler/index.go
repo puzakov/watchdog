@@ -2,6 +2,7 @@ package handler
 
 import (
 	"html"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -10,6 +11,8 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
+// HandleIndex renders an HTML page listing all stored metrics, grouped by type.
+// Gauges and counters are each rendered in a sorted list.
 func HandleIndex(store service.Storage, w http.ResponseWriter, r *http.Request) {
 	gauges, counters := store.Snapshot(r.Context())
 
@@ -17,6 +20,7 @@ func HandleIndex(store service.Storage, w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 
 	var b strings.Builder
+	b.Grow(256 + (len(gauges)+len(counters))*48)
 	b.WriteString("<!doctype html><html><head><meta charset=\"utf-8\"><title>Metrics</title></head><body>")
 	b.WriteString("<h1>Metrics</h1>")
 
@@ -29,7 +33,7 @@ func HandleIndex(store service.Storage, w http.ResponseWriter, r *http.Request) 
 
 	b.WriteString("</body></html>")
 
-	_, _ = w.Write([]byte(b.String()))
+	_, _ = io.WriteString(w, b.String())
 }
 
 func dumpMetricsBlock[T int64 | float64](b *strings.Builder, blockName string, data map[string]T, formatMethod func(T) string) {

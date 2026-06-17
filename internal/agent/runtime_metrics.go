@@ -2,8 +2,12 @@ package agent
 
 import "runtime"
 
-// ReadRuntimeGauges читает значения из runtime.MemStats и возвращает
-// только те метрики (gauge), которые требуются по ТЗ.
+// ReadRuntimeGauges reads runtime.MemStats and returns gauge metrics
+// as required by the specification (Alloc, BuckHashSys, Frees, GCCPUFraction,
+// GCSys, HeapAlloc, HeapIdle, HeapInuse, HeapObjects, HeapReleased, HeapSys,
+// LastGC, Lookups, MCacheInuse, MCacheSys, MSpanInuse, MSpanSys, Mallocs,
+// NextGC, NumForcedGC, NumGC, OtherSys, PauseTotalNs, StackInuse, StackSys,
+// Sys, TotalAlloc).
 func ReadRuntimeGauges() map[string]float64 {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)

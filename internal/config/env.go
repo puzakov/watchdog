@@ -6,6 +6,8 @@ import (
 	"github.com/caarlos0/env/v6"
 )
 
+// EnvConfig holds server configuration populated from environment variables and flags.
+// Environment variables take precedence over flag defaults.
 type EnvConfig struct {
 	Addr             string `env:"ADDRESS"`
 	StoreInterval    *int   `env:"STORE_INTERVAL"`
@@ -14,9 +16,13 @@ type EnvConfig struct {
 	Restore          bool   `env:"RESTORE"`
 	DatabaseDsn      string `env:"DATABASE_DSN"`
 	Key              string `env:"KEY"`
+	AuditFile        string `env:"AUDIT_FILE"`
+	AuditURL         string `env:"AUDIT_URL"`
 }
 
-func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string) *EnvConfig {
+// AppConfig merges flag-provided values with environment variables (env takes precedence)
+// and returns a fully populated EnvConfig.
+func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string) *EnvConfig {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -41,6 +47,21 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 	if cfg.Key != "" {
 		key = cfg.Key
 	}
+	if cfg.AuditFile != "" {
+		auditFile = cfg.AuditFile
+	}
+	if cfg.AuditURL != "" {
+		auditURL = cfg.AuditURL
+	}
 
-	return &EnvConfig{Addr: addr, StoreIntervalInt: storeInterval, FileStoragePath: fileStoragePath, Restore: restore, DatabaseDsn: databaseDsn, Key: key}
+	return &EnvConfig{
+		Addr:             addr,
+		StoreIntervalInt: storeInterval,
+		FileStoragePath:  fileStoragePath,
+		Restore:          restore,
+		DatabaseDsn:      databaseDsn,
+		Key:              key,
+		AuditFile:        auditFile,
+		AuditURL:         auditURL,
+	}
 }

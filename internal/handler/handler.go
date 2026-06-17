@@ -4,11 +4,21 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-func NewHandler(store service.Storage, conn *db.DatabaseConnection) http.Handler {
+// NewHandler creates the HTTP handler with the following routes:
+//
+//	GET  /                      — HTML page with all metrics
+//	GET  /ping                  — database health check
+//	POST /value                 — get metric value (JSON)
+//	GET  /value/{type}/{name}   — get metric value (plain text)
+//	POST /update                — update single metric (JSON)
+//	POST /update/{type}/{name}/{value} — update single metric (text/plain)
+//	POST /updates               — batch update (JSON)
+func NewHandler(store service.Storage, conn *db.DatabaseConnection, auditor *audit.Subject) http.Handler {
 	router := chi.NewRouter()
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -30,16 +40,16 @@ func NewHandler(store service.Storage, conn *db.DatabaseConnection) http.Handler
 
 	router.Route("/update", func(r chi.Router) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-			HandleUpdateJSON(store, w, r)
+			HandleUpdateJSON(store, auditor, w, r)
 		})
 		r.Post("/{type}/{name}/{value}", func(w http.ResponseWriter, r *http.Request) {
-			HandleUpdate(store, w, r)
+			HandleUpdate(store, auditor, w, r)
 		})
 	})
 
 	router.Route("/updates", func(r chi.Router) {
 		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-			HandleUpdatesJSON(store, w, r)
+			HandleUpdatesJSON(store, auditor, w, r)
 		})
 	})
 

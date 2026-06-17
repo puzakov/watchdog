@@ -30,6 +30,8 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.status = statusCode // захватываем код статуса
 }
 
+// LogRequest is HTTP middleware that logs every request with its URI, method,
+// duration, response status, and response size using the global zap logger.
 func LogRequest(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

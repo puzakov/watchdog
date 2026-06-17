@@ -15,7 +15,7 @@ import (
 
 func TestHandleUpdatesJSON_BadContentType(t *testing.T) {
 	store := service.NewMemStorage()
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/updates/", bytes.NewReader([]byte("[]")))
 	req.Header.Set("Content-Type", "text/plain")
@@ -29,7 +29,7 @@ func TestHandleUpdatesJSON_BadContentType(t *testing.T) {
 
 func TestHandleUpdatesJSON_OK(t *testing.T) {
 	store := service.NewMemStorage()
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	v := 1.5
 	d1 := int64(10)

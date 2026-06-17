@@ -1,15 +1,17 @@
 package models
 
+// Metric type constants.
 const (
+	// Counter is a metric type whose value accumulates (adds to previous).
 	Counter = "counter"
-	Gauge   = "gauge"
+	// Gauge is a metric type whose value is a float64 that replaces the previous.
+	Gauge = "gauge"
 )
 
-// NOTE: Не усложняем пример, вводя иерархическую вложенность структур.
-// Органичиваясь плоской моделью.
-// Delta и Value объявлены через указатели,
-// что бы отличать значение "0", от не заданного значения
-// и соответственно не кодировать в структуру.
+// Metrics represents a single metric with either a gauge (float64) or counter (int64) value.
+//
+// Delta and Value are pointers to distinguish "zero" from "not set",
+// preventing them from being encoded when nil.
 type Metrics struct {
 	ID    string   `json:"id"`
 	MType string   `json:"type"`

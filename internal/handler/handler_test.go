@@ -13,7 +13,7 @@ import (
 
 func TestNewHandler_RoutesToUpdate(t *testing.T) {
 	store := service.NewMemStorage()
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/123", nil)
 	req.Header.Set("Content-Type", "text/plain")
@@ -35,7 +35,7 @@ func TestNewHandler_GetRoot_ReturnsHTMLWithMetrics(t *testing.T) {
 	_ = store.UpdateGauge(context.Background(), "Alloc", 1.5)
 	_ = store.UpdateCounter(context.Background(), "PollCount", 2)
 
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -63,7 +63,7 @@ func TestNewHandler_RoutesToValue(t *testing.T) {
 	store := service.NewMemStorage()
 	_ = store.UpdateGauge(context.Background(), "Alloc", 1.5)
 
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Alloc", nil)
 	w := httptest.NewRecorder()

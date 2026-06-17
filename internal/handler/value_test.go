@@ -17,7 +17,7 @@ func TestValue_Gauge_OK(t *testing.T) {
 	store := service.NewMemStorage()
 	_ = store.UpdateGauge(context.Background(), "Alloc", 1.5)
 
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Alloc", nil)
 	w := httptest.NewRecorder()
 
@@ -34,7 +34,7 @@ func TestValue_Counter_OK(t *testing.T) {
 	store := service.NewMemStorage()
 	_ = store.UpdateCounter(context.Background(), "PollCount", 42)
 
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/value/counter/PollCount", nil)
 	w := httptest.NewRecorder()
 
@@ -49,7 +49,7 @@ func TestValue_Counter_OK(t *testing.T) {
 
 func TestValue_UnknownMetric_NotFound(t *testing.T) {
 	store := service.NewMemStorage()
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/Unknown", nil)
 	w := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestValue_UnknownMetric_NotFound(t *testing.T) {
 
 func TestValueJSON_Counter_NotFound(t *testing.T) {
 	store := service.NewMemStorage()
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	reqBody, _ := json.Marshal(&models.Metrics{ID: "missing", MType: models.Counter})
 	req := httptest.NewRequest(http.MethodPost, "/value/", bytes.NewReader(reqBody))
@@ -78,7 +78,7 @@ func TestValueJSON_Counter_NotFound(t *testing.T) {
 func TestValueJSON_Counter_OK_ReturnsJSON(t *testing.T) {
 	store := service.NewMemStorage()
 	_ = store.UpdateCounter(context.Background(), "c1", 42)
-	h := NewHandler(store, &db.DatabaseConnection{})
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
 
 	reqBody, _ := json.Marshal(&models.Metrics{ID: "c1", MType: models.Counter})
 	req := httptest.NewRequest(http.MethodPost, "/value/", bytes.NewReader(reqBody))

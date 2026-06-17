@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/logger"
 	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/service"
@@ -18,7 +19,9 @@ import (
 
 var errBadRequest = errors.New("bad request")
 
-func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request) {
+// HandleUpdate processes a single metric update from URL parameters.
+// Expected URL: /update/{type}/{name}/{value} with Content-Type: text/plain.
+func HandleUpdate(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	args := models.Metrics{
 		MType: chi.URLParam(r, "type"),
 		ID:    chi.URLParam(r, "name"),
@@ -54,10 +57,13 @@ func HandleUpdate(store service.Storage, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	auditor.Notify([]string{args.ID}, audit.ClientIP(r))
 	w.WriteHeader(http.StatusOK)
 }
 
-func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Request) {
+// HandleUpdateJSON processes a single metric update from a JSON request body.
+// Expected Content-Type: application/json. Returns the updated metric as JSON.
+func HandleUpdateJSON(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "application/json") {
 		logger.Log.Debug("Invalid content type", zap.String("Content-Type", ct))
@@ -79,6 +85,7 @@ func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	auditor.Notify([]string{args.ID}, audit.ClientIP(r))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -90,7 +97,10 @@ func HandleUpdateJSON(store service.Storage, w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Request) {
+// HandleUpdatesJSON processes a batch of metrics from a JSON request body.
+// Duplicates are deduplicated: gauges take the last value, counters accumulate deltas.
+// Expected Content-Type: application/json.
+func HandleUpdatesJSON(store service.Storage, auditor *audit.Subject, w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "application/json") {
 		logger.Log.Debug("Invalid content type", zap.String("Content-Type", ct))
@@ -119,6 +129,7 @@ func HandleUpdatesJSON(store service.Storage, w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	auditor.Notify(metricIDs(batch), audit.ClientIP(r))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -161,29 +172,21 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 		mtype string
 	}
 
-	// preserve order of first appearance
-	order := make([]key, 0, len(in))
 	gauges := make(map[key]float64, len(in))
 	counters := make(map[key]int64, len(in))
 
-	seen := make(map[key]struct{}, len(in))
 	for _, m := range in {
 		if m.ID == "" || m.MType == "" {
 			return nil, fmt.Errorf("%w: invalid metric: empty id/type", errBadRequest)
 		}
 
 		k := key{id: m.ID, mtype: m.MType}
-		if _, ok := seen[k]; !ok {
-			seen[k] = struct{}{}
-			order = append(order, k)
-		}
-
 		switch m.MType {
 		case models.Gauge:
 			if m.Value == nil {
 				return nil, fmt.Errorf("%w: invalid gauge metric %q: missing value", errBadRequest, m.ID)
 			}
-			gauges[k] = *m.Value // last wins
+			gauges[k] = *m.Value
 		case models.Counter:
 			if m.Delta == nil {
 				return nil, fmt.Errorf("%w: invalid counter metric %q: missing delta", errBadRequest, m.ID)
@@ -194,21 +197,28 @@ func normalizeBatch(in []models.Metrics) ([]models.Metrics, error) {
 		}
 	}
 
-	out := make([]models.Metrics, 0, len(order))
-	for _, k := range order {
-		switch k.mtype {
-		case models.Gauge:
-			v := gauges[k]
-			vv := v
-			out = append(out, models.Metrics{ID: k.id, MType: models.Gauge, Value: &vv})
-		case models.Counter:
-			d := counters[k]
-			dd := d
-			out = append(out, models.Metrics{ID: k.id, MType: models.Counter, Delta: &dd})
-		}
+	out := make([]models.Metrics, 0, len(gauges)+len(counters))
+	for k, v := range gauges {
+		vv := v
+		out = append(out, models.Metrics{ID: k.id, MType: models.Gauge, Value: &vv})
+	}
+	for k, d := range counters {
+		dd := d
+		out = append(out, models.Metrics{ID: k.id, MType: models.Counter, Delta: &dd})
 	}
 
 	return out, nil
+}
+
+func metricIDs(metrics []models.Metrics) []string {
+	if len(metrics) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(metrics))
+	for _, m := range metrics {
+		ids = append(ids, m.ID)
+	}
+	return ids
 }
 
 func writeUpdateError(w http.ResponseWriter, err error) {

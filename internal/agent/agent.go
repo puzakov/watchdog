@@ -14,17 +14,25 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
+// Config configures the metrics collection agent.
 type Config struct {
-	ServerAddress  string
-	PollInterval   time.Duration
+	// ServerAddress is the base URL of the metrics server (e.g. http://localhost:8080).
+	ServerAddress string
+	// PollInterval is how often to collect runtime and host metrics.
+	PollInterval time.Duration
+	// ReportInterval is how often to send collected metrics to the server.
 	ReportInterval time.Duration
-	Timeout        time.Duration
-	Key            string
+	// Timeout is the HTTP client timeout for sending metrics.
+	Timeout time.Duration
+	// Key used for SHA256 request signing (empty = no signing).
+	Key string
 	// RateLimit is the maximum number of concurrent outgoing HTTP requests (worker pool size).
 	RateLimit int
-	Logger    *log.Logger
+	// Logger for agent diagnostics. If nil, log.Default() is used.
+	Logger *log.Logger
 }
 
+// Agent collects runtime and host metrics and periodically reports them to a server.
 type Agent struct {
 	cfg    Config
 	store  service.Storage
@@ -36,6 +44,7 @@ type Agent struct {
 	poolTasks chan func()
 }
 
+// New creates and configures an Agent with sensible defaults for zero-valued fields.
 func New(cfg Config) *Agent {
 	if cfg.ServerAddress == "" {
 		cfg.ServerAddress = "http://localhost:8080"
@@ -73,7 +82,7 @@ func New(cfg Config) *Agent {
 }
 
 // Run starts runtime polling, host metrics polling, reporting, and an HTTP worker pool.
-// Blocks forever (same lifecycle as before).
+// It blocks forever (until the process is terminated).
 func (a *Agent) Run() {
 	workers := a.cfg.RateLimit
 	if workers < 1 {

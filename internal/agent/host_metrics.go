@@ -9,8 +9,8 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-// CollectHostGauges reads host memory and per-CPU utilization (gopsutil).
-// Gauge names: TotalMemory, FreeMemory, CPUutilization1..CPUutilizationN.
+// CollectHostGauges reads host memory and per-CPU utilization using gopsutil.
+// Returns gauges: TotalMemory, FreeMemory, CPUutilization1..CPUutilizationN.
 func CollectHostGauges(ctx context.Context) map[string]float64 {
 	out := make(map[string]float64)
 
