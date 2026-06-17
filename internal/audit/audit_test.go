@@ -8,7 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/puzakov/watchdog/internal/logger"
+	"go.uber.org/zap"
 )
+
+func init() {
+	_ = logger.Initialize("debug")
+}
 
 type captureObserver struct {
 	events []Event
@@ -41,6 +48,7 @@ func TestSubject_NotifyAllObservers(t *testing.T) {
 	auditFile := filepath.Join(t.TempDir(), "audit.log")
 	subject := NewSubject(NewFileObserver(auditFile), NewURLObserver(fileServer.URL))
 	subject.Notify([]string{"Alloc", "Frees"}, "192.168.0.42")
+	subject.Shutdown()
 
 	data, err := os.ReadFile(auditFile)
 	if err != nil {
@@ -77,7 +85,44 @@ func TestCaptureObserver(t *testing.T) {
 	capture := &captureObserver{}
 	subject := NewSubject(capture)
 	subject.Notify([]string{"Alloc"}, "10.0.0.1")
+	subject.Shutdown()
 	if len(capture.events) != 1 {
 		t.Fatalf("events = %d, want 1", len(capture.events))
 	}
+}
+
+func TestSubject_BufferOverflow(t *testing.T) {
+	capture := &captureObserver{}
+	subject := NewSubjectWithBuf(2, capture)
+
+	// Fill the buffer
+	subject.Notify([]string{"m1"}, "10.0.0.1")
+	subject.Notify([]string{"m2"}, "10.0.0.1")
+	// This one should be dropped
+	subject.Notify([]string{"m3"}, "10.0.0.1")
+
+	subject.Shutdown()
+
+	if len(capture.events) > 2 {
+		t.Fatalf("events = %d, want <= 2 (overflow should drop)", len(capture.events))
+	}
+	for _, e := range capture.events {
+		if e.Metrics[0] == "m3" {
+			t.Fatal("m3 should have been dropped due to buffer overflow")
+		}
+	}
+}
+
+func TestSubject_ShutdownIsIdempotent(t *testing.T) {
+	logger.Log.Debug("test", zap.String("key", "val"))
+	subject := NewSubject()
+	subject.Shutdown()
+	subject.Shutdown() // must not panic
+}
+
+func TestSubject_NoObservers(t *testing.T) {
+	subject := NewSubject()
+	subject.Notify([]string{"m1"}, "10.0.0.1")
+	subject.Shutdown()
+	// just must not panic
 }

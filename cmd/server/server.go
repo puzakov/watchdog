@@ -122,6 +122,7 @@ func run(cfg *config.EnvConfig, pprofAddr string) error {
 			auditor.Subscribe(audit.NewURLObserver(cfg.AuditURL))
 		}
 	}
+	defer auditor.Shutdown()
 
 	h := handler.NewHandler(storage, conn, auditor)
 	h = middleware.HashSHA256(cfg.Key, h)
