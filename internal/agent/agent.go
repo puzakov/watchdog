@@ -17,6 +17,7 @@ import (
 )
 
 // Config configures the metrics collection agent.
+// generate:reset
 type Config struct {
 	// ServerAddress is the base URL of the metrics server (e.g. http://localhost:8080).
 	ServerAddress string
@@ -35,6 +36,7 @@ type Config struct {
 }
 
 // Agent collects runtime and host metrics and periodically reports them to a server.
+// generate:reset
 type Agent struct {
 	cfg    Config
 	store  service.Storage

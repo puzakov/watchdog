@@ -12,6 +12,7 @@ import (
 )
 
 // URLObserver sends audit events as HTTP POST requests to a configured URL.
+// generate:reset
 type URLObserver struct {
 	url    string
 	client *http.Client
