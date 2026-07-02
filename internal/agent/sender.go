@@ -20,6 +20,12 @@ import (
 	"github.com/puzakov/watchdog/internal/sign"
 )
 
+// ErrEndpointUnsupported is returned when the server does not support the
+// target endpoint (404 or 405). Triggers a fallback to legacy single-metric sends.
+var ErrEndpointUnsupported = errors.New("endpoint unsupported")
+
+var httpRetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+
 var gzipBufPool = sync.Pool{
 	New: func() any {
 		return bytes.NewBuffer(make([]byte, 0, 1024))
@@ -32,13 +38,9 @@ var gzipWriterPool = sync.Pool{
 	},
 }
 
-// ErrEndpointUnsupported is returned when the server does not support the
-// target endpoint (404 or 405). Triggers a fallback to legacy single-metric sends.
-var ErrEndpointUnsupported = errors.New("endpoint unsupported")
-
-var httpRetryDelays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
-
 // SenderConfig configures the HTTP metrics sender.
+//
+// generate:reset
 type SenderConfig struct {
 	// ServerAddress is the base URL of the metrics server.
 	ServerAddress string
@@ -51,6 +53,8 @@ type SenderConfig struct {
 }
 
 // Sender sends metrics to the server over HTTP with gzip compression and optional SHA256 signing.
+//
+// generate:reset
 type Sender struct {
 	cfg SenderConfig
 }
