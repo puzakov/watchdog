@@ -10,6 +10,15 @@ import (
 	"github.com/puzakov/watchdog/internal/agent"
 )
 
+// Build info — set via -ldflags at build time:
+//
+//	go build -ldflags "-X main.buildVersion=1.0.0 -X main.buildDate=$(date +%Y-%m-%d) -X main.buildCommit=$(git rev-parse --short HEAD)"
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 type EnvConfig struct {
 	Addr           string `env:"ADDRESS"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
@@ -18,7 +27,22 @@ type EnvConfig struct {
 	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
+func printBuildInfo() {
+	valOrNA := func(s string) string {
+		if s == "" {
+			return "N/A"
+		}
+		return s
+	}
+
+	fmt.Printf("Build version: %s\n", valOrNA(buildVersion))
+	fmt.Printf("Build date: %s\n", valOrNA(buildDate))
+	fmt.Printf("Build commit: %s\n", valOrNA(buildCommit))
+}
+
 func main() {
+	printBuildInfo()
+
 	var (
 		addr           string
 		pollInterval   int

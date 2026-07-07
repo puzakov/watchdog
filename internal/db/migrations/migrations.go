@@ -1,3 +1,5 @@
+// Package migrations handles database schema migrations using the
+// github.com/pressly/goose library with embedded SQL migration files.
 package migrations
 
 import (

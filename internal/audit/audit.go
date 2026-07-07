@@ -1,3 +1,6 @@
+// Package audit implements an observer-pattern audit logging system.
+// It provides file-based and HTTP-based observers that receive events
+// about processed metrics requests.
 package audit
 
 import (

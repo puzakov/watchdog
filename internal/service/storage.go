@@ -1,3 +1,6 @@
+// Package service provides metrics storage implementations including
+// in-memory storage (MemStorage), file-persisted storage (PersistingStorage),
+// and PostgreSQL-backed storage (PostgresStorage).
 package service
 
 import (

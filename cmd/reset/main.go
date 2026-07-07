@@ -1,0 +1,397 @@
+// Command reset scans Go packages for structs annotated with // generate:reset
+// and generates Reset() methods that zero out fields, truncate slices, clear maps,
+// and recursively reset nested structs and pointer targets.
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/printer"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// zeroValues maps basic Go type names to their literal zero values.
+var zeroValues = map[string]string{
+	"bool":       "false",
+	"int":        "0",
+	"int8":       "0",
+	"int16":      "0",
+	"int32":      "0",
+	"int64":      "0",
+	"uint":       "0",
+	"uint8":      "0",
+	"uint16":     "0",
+	"uint32":     "0",
+	"uint64":     "0",
+	"uintptr":    "0",
+	"float32":    "0",
+	"float64":    "0",
+	"complex64":  "0",
+	"complex128": "0",
+	"string":     `""`,
+	"byte":       "0",
+	"rune":       "0",
+}
+
+func isBasicType(name string) bool {
+	_, ok := zeroValues[name]
+	return ok
+}
+
+func zeroValue(name string) string {
+	if v, ok := zeroValues[name]; ok {
+		return v
+	}
+	return "nil"
+}
+
+type structInfo struct {
+	name   string
+	fields []*ast.Field
+}
+
+// Generator holds the file set used for rendering AST expressions.
+type Generator struct {
+	fset *token.FileSet
+}
+
+func main() {
+	root := "."
+	if len(os.Args) > 1 {
+		root = os.Args[1]
+	}
+
+	gen := &Generator{fset: token.NewFileSet()}
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return nil
+		}
+		name := info.Name()
+		if path != root && (strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules") {
+			return filepath.SkipDir
+		}
+		return gen.processDir(path)
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// processDir parses all Go source files (excluding tests) in a single directory,
+// finds any structs annotated with // generate:reset, and writes a reset.gen.go file.
+func (g *Generator) processDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil // skip unreadable directories
+	}
+
+	type namedFile struct {
+		file *ast.File
+		name string
+	}
+	var goFiles []namedFile
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		fileName := entry.Name()
+		if !strings.HasSuffix(fileName, ".go") {
+			continue
+		}
+		if strings.HasSuffix(fileName, "_test.go") || strings.HasSuffix(fileName, ".gen.go") {
+			continue
+		}
+
+		f, err := parser.ParseFile(g.fset, filepath.Join(dir, fileName), nil, parser.ParseComments)
+		if err != nil {
+			continue // skip files with parse errors
+		}
+		goFiles = append(goFiles, namedFile{file: f, name: f.Name.Name})
+	}
+
+	if len(goFiles) == 0 {
+		return nil
+	}
+
+	// Group by package name.
+	pkgFiles := make(map[string][]*ast.File)
+	for _, nf := range goFiles {
+		pkgFiles[nf.name] = append(pkgFiles[nf.name], nf.file)
+	}
+
+	for pkgName, files := range pkgFiles {
+		structs, knownStructs := findResetStructs(files)
+		if len(structs) == 0 {
+			continue
+		}
+
+		content := g.generateFile(pkgName, structs, knownStructs)
+		outPath := filepath.Join(dir, "reset.gen.go")
+		if err := os.WriteFile(outPath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("write %s: %w", outPath, err)
+		}
+		fmt.Printf("Generated %s (%d structs)\n", outPath, len(structs))
+	}
+	return nil
+}
+
+// findResetStructs scans parsed files for struct type declarations annotated with
+// // generate:reset. Returns the matching structs along with the set of all struct
+// type names in the package (for generating direct Reset() calls on known types).
+func findResetStructs(files []*ast.File) ([]structInfo, map[string]bool) {
+	knownStructs := make(map[string]bool)
+	var structs []structInfo
+
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range genDecl.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				st, ok := ts.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				knownStructs[ts.Name.Name] = true
+
+				if !hasGenerateReset(ts.Doc) && !hasGenerateReset(genDecl.Doc) {
+					continue
+				}
+				structs = append(structs, structInfo{
+					name:   ts.Name.Name,
+					fields: st.Fields.List,
+				})
+			}
+		}
+	}
+
+	return structs, knownStructs
+}
+
+// hasGenerateReset reports whether a comment group contains "// generate:reset".
+func hasGenerateReset(doc *ast.CommentGroup) bool {
+	if doc == nil {
+		return false
+	}
+	for _, comment := range doc.List {
+		if strings.TrimSpace(comment.Text) == "// generate:reset" {
+			return true
+		}
+	}
+	return false
+}
+
+// generateFile produces the complete reset.gen.go content for a package.
+func (g *Generator) generateFile(pkgName string, structs []structInfo, knownStructs map[string]bool) string {
+	var buf bytes.Buffer
+
+	fmt.Fprint(&buf, "// Code generated by reset generator. DO NOT EDIT.\n\n")
+	fmt.Fprintf(&buf, "package %s\n\n", pkgName)
+
+	for _, s := range structs {
+		buf.WriteString(g.generateResetMethod(s, knownStructs))
+		buf.WriteString("\n")
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return buf.String()
+	}
+	return string(formatted)
+}
+
+// generateResetMethod produces the Reset() method for a single struct.
+func (g *Generator) generateResetMethod(s structInfo, knownStructs map[string]bool) string {
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "func (rs *%s) Reset() {\n", s.name)
+	buf.WriteString("\tif rs == nil {\n\t\treturn\n\t}\n")
+
+	for _, f := range s.fields {
+		fieldName := fieldName(f)
+		if fieldName == "" {
+			fieldName = embeddedFieldName(f.Type)
+		}
+		if fieldName == "" {
+			continue
+		}
+
+		resetCode := g.resetNonPointer("rs."+fieldName, f.Type, knownStructs)
+		if resetCode != "" {
+			for line := range strings.SplitSeq(resetCode, "\n") {
+				buf.WriteString("\n\t" + line)
+			}
+		}
+	}
+
+	buf.WriteString("\n}\n")
+	return buf.String()
+}
+
+// fieldName returns the name of the first field identifier, or "" for embedded fields.
+func fieldName(f *ast.Field) string {
+	if len(f.Names) == 0 {
+		return ""
+	}
+	return f.Names[0].Name
+}
+
+// embeddedFieldName derives the accessor name for an embedded (anonymous) field.
+func embeddedFieldName(typ ast.Expr) string {
+	switch t := typ.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return embeddedFieldName(t.X)
+	case *ast.SelectorExpr:
+		return t.Sel.Name
+	}
+	return ""
+}
+
+// resetNonPointer generates Go statements that reset the value at path to its
+// zero state, assuming the value is NOT a pointer type. Pointer-typed fields
+// are delegated to resetPointer.
+func (g *Generator) resetNonPointer(path string, typ ast.Expr, knownStructs map[string]bool) string {
+	switch t := typ.(type) {
+	case *ast.Ident:
+		if isBasicType(t.Name) {
+			return fmt.Sprintf("%s = %s", path, zeroValue(t.Name))
+		}
+		if knownStructs[t.Name] {
+			// Known struct type — call Reset() directly.
+			// Reset() is defined on *T, and Go auto-takes & of addressable values.
+			return fmt.Sprintf("%s.Reset()", path)
+		}
+		// Unknown named type — try interface assertion via any().
+		return fmt.Sprintf("if resetter, ok := any(%s).(interface{ Reset() }); ok {\n\tresetter.Reset()\n}", path)
+
+	case *ast.StarExpr:
+		return g.resetPointer(path, t.X, knownStructs)
+
+	case *ast.ArrayType:
+		if t.Len == nil {
+			return fmt.Sprintf("%s = %s[:0]", path, path)
+		}
+		return fmt.Sprintf("%s = [%s]%s{}", path, g.exprToString(t.Len), g.exprToString(t.Elt))
+
+	case *ast.MapType:
+		return fmt.Sprintf("clear(%s)", path)
+
+	case *ast.StructType:
+		var lines []string
+		for _, f := range t.Fields.List {
+			fn := fieldName(f)
+			if fn == "" {
+				fn = embeddedFieldName(f.Type)
+			}
+			if fn == "" {
+				continue
+			}
+			if code := g.resetNonPointer(path+"."+fn, f.Type, knownStructs); code != "" {
+				lines = append(lines, code)
+			}
+		}
+		return strings.Join(lines, "\n")
+
+	case *ast.SelectorExpr:
+		return fmt.Sprintf("// %s — external package type, cannot auto-reset", g.exprToString(t))
+
+	default:
+		return fmt.Sprintf("// TODO: reset for %s", g.exprToString(typ))
+	}
+}
+
+// resetPointer generates Go statements that check path for nil, then reset the
+// value it points to. path must be a pointer-typed expression.
+func (g *Generator) resetPointer(path string, innerTyp ast.Expr, knownStructs map[string]bool) string {
+	switch t := innerTyp.(type) {
+	case *ast.Ident:
+		if isBasicType(t.Name) {
+			return fmt.Sprintf("if %[1]s != nil {\n\t*%[1]s = %[2]s\n}", path, zeroValue(t.Name))
+		}
+		if knownStructs[t.Name] {
+			// Known struct pointer — call Reset() directly.
+			return fmt.Sprintf("if %s != nil {\n\t%s.Reset()\n}", path, path)
+		}
+		// Unknown named type — try interface assertion via any().
+		return fmt.Sprintf("if %[1]s != nil {\n\tif resetter, ok := any(%[1]s).(interface{ Reset() }); ok {\n\t\tresetter.Reset()\n\t}\n}", path)
+
+	case *ast.StarExpr:
+		inner := g.resetPointer("*"+path, t.X, knownStructs)
+		return fmt.Sprintf("if %s != nil {\n%s\n}", path, g.indent(inner, "\t"))
+
+	case *ast.ArrayType:
+		if t.Len == nil {
+			return fmt.Sprintf("if %[1]s != nil {\n\t*%[1]s = (*%[1]s)[:0]\n}", path)
+		}
+		return fmt.Sprintf("if %[1]s != nil {\n\t*%[1]s = [%[2]s]%[3]s{}\n}",
+			path, g.exprToString(t.Len), g.exprToString(t.Elt))
+
+	case *ast.MapType:
+		return fmt.Sprintf("if %[1]s != nil {\n\tclear(*%[1]s)\n}", path)
+
+	case *ast.StructType:
+		var lines []string
+		for _, f := range t.Fields.List {
+			fn := fieldName(f)
+			if fn == "" {
+				fn = embeddedFieldName(f.Type)
+			}
+			if fn == "" {
+				continue
+			}
+			if code := g.resetNonPointer(path+"."+fn, f.Type, knownStructs); code != "" {
+				lines = append(lines, code)
+			}
+		}
+		if len(lines) == 0 {
+			return ""
+		}
+		body := strings.Join(lines, "\n\t")
+		return fmt.Sprintf("if %s != nil {\n\t%s\n}", path, body)
+
+	case *ast.SelectorExpr:
+		return fmt.Sprintf("if %[1]s != nil {\n\t// %[2]s — external type, cannot auto-reset\n}", path, g.exprToString(t))
+
+	default:
+		return fmt.Sprintf("if %[1]s != nil {\n\t// TODO: reset for %[1]s (%[2]s)\n}", path, g.exprToString(innerTyp))
+	}
+}
+
+// exprToString renders an AST expression to a Go source string.
+func (g *Generator) exprToString(expr ast.Expr) string {
+	var buf bytes.Buffer
+	if err := printer.Fprint(&buf, g.fset, expr); err != nil {
+		return "<error>"
+	}
+	return buf.String()
+}
+
+// indent adds an indentation prefix to every line in s (including the first).
+func (g *Generator) indent(s, prefix string) string {
+	var buf bytes.Buffer
+	for line := range strings.SplitSeq(s, "\n") {
+		buf.WriteString(prefix)
+		buf.WriteString(line)
+		buf.WriteString("\n")
+	}
+	return strings.TrimRight(buf.String(), "\n")
+}

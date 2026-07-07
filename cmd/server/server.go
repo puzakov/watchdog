@@ -24,7 +24,31 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
+// Build info — set via -ldflags at build time:
+//
+//	go build -ldflags "-X main.buildVersion=1.0.0 -X main.buildDate=$(date +%Y-%m-%d) -X main.buildCommit=$(git rev-parse --short HEAD)"
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
+func printBuildInfo() {
+	valOrNA := func(s string) string {
+		if s == "" {
+			return "N/A"
+		}
+		return s
+	}
+
+	fmt.Printf("Build version: %s\n", valOrNA(buildVersion))
+	fmt.Printf("Build date: %s\n", valOrNA(buildDate))
+	fmt.Printf("Build commit: %s\n", valOrNA(buildCommit))
+}
+
 func main() {
+	printBuildInfo()
+
 	var (
 		addr            string
 		storeInterval   int
@@ -55,7 +79,7 @@ func main() {
 
 	if err := run(cfg, pprofAddr); err != nil {
 		logger.Log.Error(err.Error())
-		os.Exit(1)
+		return
 	}
 }
 

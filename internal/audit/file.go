@@ -12,6 +12,7 @@ import (
 
 // FileObserver writes audit events as newline-delimited JSON to a file.
 // The file is opened once and kept open for the lifetime of the observer.
+// generate:reset
 type FileObserver struct {
 	file *os.File
 	mu   sync.Mutex
