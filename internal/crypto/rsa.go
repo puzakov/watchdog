@@ -14,6 +14,7 @@ import (
 )
 
 // LoadPublicKey reads a PEM-encoded RSA public key from the given file path.
+// Supports both PKIX (SPKI) and PKCS1 formats.
 func LoadPublicKey(path string) (*rsa.PublicKey, error) {
 	pemBytes, err := os.ReadFile(path)
 	if err != nil {
@@ -25,16 +26,21 @@ func LoadPublicKey(path string) (*rsa.PublicKey, error) {
 		return nil, errors.New("no PEM block found in public key file")
 	}
 
+	// Try PKIX/SPKI format first.
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err == nil {
+		pub, ok := key.(*rsa.PublicKey)
+		if !ok {
+			return nil, errors.New("key is not an RSA public key")
+		}
+		return pub, nil
+	}
+
+	// Fallback: try PKCS1 format.
+	pub, err := x509.ParsePKCS1PublicKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("parse public key: %w", err)
+		return nil, errors.New("public key is not in PKIX or PKCS1 format")
 	}
-
-	pub, ok := key.(*rsa.PublicKey)
-	if !ok {
-		return nil, errors.New("key is not an RSA public key")
-	}
-
 	return pub, nil
 }
 
@@ -69,7 +75,11 @@ func LoadPrivateKey(path string) (*rsa.PrivateKey, error) {
 
 // EncryptOAEP encrypts plaintext using RSA-OAEP with SHA-256.
 // The label is empty. Returns the ciphertext.
+// Returns an error if pub is nil.
 func EncryptOAEP(plaintext []byte, pub *rsa.PublicKey) ([]byte, error) {
+	if pub == nil {
+		return nil, errors.New("public key is nil")
+	}
 	// RSA-OAEP can only encrypt data up to keySize - 2*hashSize - 2 bytes.
 	// For a 2048-bit key with SHA-256 (32 bytes): 2048/8 - 2*32 - 2 = 190 bytes.
 	// The gzip-compressed metrics payload is typically well under this limit.
@@ -82,7 +92,11 @@ func EncryptOAEP(plaintext []byte, pub *rsa.PublicKey) ([]byte, error) {
 
 // DecryptOAEP decrypts ciphertext using RSA-OAEP with SHA-256.
 // The label is empty. Returns the plaintext.
+// Returns an error if priv is nil.
 func DecryptOAEP(ciphertext []byte, priv *rsa.PrivateKey) ([]byte, error) {
+	if priv == nil {
+		return nil, errors.New("private key is nil")
+	}
 	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, priv, ciphertext, nil)
 	if err != nil {
 		return nil, fmt.Errorf("rsa decrypt: %w", err)
