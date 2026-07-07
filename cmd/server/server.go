@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"database/sql"
 	"errors"
 	"flag"
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/config"
+	"github.com/puzakov/watchdog/internal/crypto"
 	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/db/migrations"
 	"github.com/puzakov/watchdog/internal/handler"
@@ -56,6 +58,7 @@ func main() {
 		restore         bool
 		databaseDsn     string
 		key             string
+		cryptoKey       string
 		auditFile       string
 		auditURL        string
 		pprofAddr       string
@@ -69,21 +72,33 @@ func main() {
 	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
 	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
 	flag.StringVar(&key, "k", "", "SHA256 hash key")
+	flag.StringVar(&cryptoKey, "crypto-key", "", "path to RSA private key file")
 	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
 	flag.StringVar(&auditURL, "audit-url", "", "audit log URL")
 	flag.StringVar(&pprofAddr, "pprof", "", "pprof listen address (e.g. localhost:6060)")
 	flag.Parse()
 
-	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key, auditFile, auditURL)
+	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key, auditFile, auditURL, cryptoKey)
 	_ = logger.Initialize("info")
 
-	if err := run(cfg, pprofAddr); err != nil {
+	var privKey *rsa.PrivateKey
+	if cfg.CryptoKey != "" {
+		var err error
+		privKey, err = crypto.LoadPrivateKey(cfg.CryptoKey)
+		if err != nil {
+			logger.Log.Error("failed to load private key: " + err.Error())
+		} else {
+			logger.Log.Info("RSA private key loaded from " + cfg.CryptoKey)
+		}
+	}
+
+	if err := run(cfg, privKey, pprofAddr); err != nil {
 		logger.Log.Error(err.Error())
 		return
 	}
 }
 
-func run(cfg *config.EnvConfig, pprofAddr string) error {
+func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error {
 	storage := service.NewMemStorage()
 	ctx := context.Background()
 
@@ -156,6 +171,7 @@ func run(cfg *config.EnvConfig, pprofAddr string) error {
 	h := handler.NewHandler(storage, conn, auditor)
 	h = middleware.HashSHA256(cfg.Key, h)
 	h = middleware.Gzip(h)
+	h = middleware.DecryptRSA(privKey, h)
 	h = middleware.LogRequest(h)
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: h}

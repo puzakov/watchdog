@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/caarlos0/env/v6"
 	"github.com/puzakov/watchdog/internal/agent"
+	"github.com/puzakov/watchdog/internal/crypto"
 )
 
 // Build info — set via -ldflags at build time:
@@ -24,6 +26,7 @@ type EnvConfig struct {
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	Key            string `env:"KEY"`
+	CryptoKey      string `env:"CRYPTO_KEY"`
 	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
@@ -48,6 +51,7 @@ func main() {
 		pollInterval   int
 		reportInterval int
 		key            string
+		cryptoKey      string
 		rateLimit      int
 	)
 
@@ -55,6 +59,7 @@ func main() {
 	flag.IntVar(&pollInterval, "p", 2, "poll interval in seconds")
 	flag.IntVar(&reportInterval, "r", 10, "report interval in seconds")
 	flag.StringVar(&key, "k", "", "SHA256 hash key")
+	flag.StringVar(&cryptoKey, "crypto-key", "", "path to RSA public key file")
 	flag.IntVar(&rateLimit, "l", 4, "max concurrent outgoing HTTP requests (worker pool size)")
 	flag.Parse()
 
@@ -79,6 +84,17 @@ func main() {
 	if cfg.RateLimit > 0 {
 		rateLimit = cfg.RateLimit
 	}
+	if cfg.CryptoKey != "" {
+		cryptoKey = cfg.CryptoKey
+	}
+
+	var pubKey *rsa.PublicKey
+	if cryptoKey != "" {
+		pubKey, err = crypto.LoadPublicKey(cryptoKey)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+	}
 
 	a := agent.New(agent.Config{
 		ServerAddress:  fmt.Sprintf("http://%s", addr),
@@ -86,6 +102,7 @@ func main() {
 		ReportInterval: time.Duration(reportInterval) * time.Second,
 		Timeout:        5 * time.Second, //http request timeout,
 		Key:            key,
+		CryptoKey:      pubKey,
 		RateLimit:      rateLimit,
 		Logger:         log.Default(),
 	})

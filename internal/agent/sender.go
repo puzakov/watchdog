@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/puzakov/watchdog/internal/crypto"
 	models "github.com/puzakov/watchdog/internal/model"
 	"github.com/puzakov/watchdog/internal/sign"
 )
@@ -48,6 +50,10 @@ type SenderConfig struct {
 	Client *http.Client
 	// Key for SHA256 request signing (empty = no signing).
 	Key string
+	// CryptoKey is the RSA public key used to encrypt request bodies.
+	// When set, the gzip-compressed payload is RSA-OAEP encrypted before sending.
+	// If nil, no encryption is applied.
+	CryptoKey *rsa.PublicKey
 	// Logger for diagnostics. If nil, log.Default() is used.
 	Logger *log.Logger
 }
@@ -102,18 +108,30 @@ func (s *Sender) postJSON(path string, payload any) error {
 		return err
 	}
 
-	gzipped, err := gzipBytes(body)
+	wireBody, err := gzipBytes(body)
 	if err != nil {
 		return err
 	}
 
+	// When RSA encryption is configured, encrypt the gzip-compressed payload.
+	// The gzip layer is inside the encryption envelope; the wire Content-Encoding
+	// header is removed because the body on the wire is no longer plain gzip.
+	if s.cfg.CryptoKey != nil {
+		wireBody, err = crypto.EncryptOAEP(wireBody, s.cfg.CryptoKey)
+		if err != nil {
+			return err
+		}
+	}
+
 	for attempt := 0; ; attempt++ {
-		req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(gzipped))
+		req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(wireBody))
 		if err != nil {
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Content-Encoding", "gzip")
+		if s.cfg.CryptoKey == nil {
+			req.Header.Set("Content-Encoding", "gzip")
+		}
 		if s.cfg.Key != "" {
 			req.Header.Set(sign.HeaderHashSHA256, sign.SumSHA256(body, s.cfg.Key))
 		}

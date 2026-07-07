@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"log"
 	"math/rand"
@@ -29,6 +30,10 @@ type Config struct {
 	Timeout time.Duration
 	// Key used for SHA256 request signing (empty = no signing).
 	Key string
+	// CryptoKey is the RSA public key used to encrypt request bodies.
+	// When set, the gzip-compressed payload is encrypted before sending.
+	// If nil, no encryption is applied.
+	CryptoKey *rsa.PublicKey
 	// RateLimit is the maximum number of concurrent outgoing HTTP requests (worker pool size).
 	RateLimit int
 	// Logger for agent diagnostics. If nil, log.Default() is used.
@@ -78,8 +83,9 @@ func New(cfg Config) *Agent {
 			Client: &http.Client{
 				Timeout: cfg.Timeout,
 			},
-			Key:    cfg.Key,
-			Logger: cfg.Logger,
+			Key:       cfg.Key,
+			CryptoKey: cfg.CryptoKey,
+			Logger:    cfg.Logger,
 		}),
 		lastReportedCounters: make(map[string]int64),
 	}
