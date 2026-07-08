@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,40 +11,48 @@ import (
 	"time"
 )
 
-// buildAgentBinary builds the agent binary and returns its path.
-func buildAgentBinary(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "agent.test")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
-	cmd.Dir = "."
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build agent: %v\n%s", err, out)
+var agentBinary string
+
+func TestMain(m *testing.M) {
+	// Build binary once for all tests.
+	dir, err := os.MkdirTemp("", "agent-test-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create temp dir: %v\n", err)
+		os.Exit(1)
 	}
-	return bin
+	defer os.RemoveAll(dir)
+
+	agentBinary = filepath.Join(dir, "agent.test")
+	cmd := exec.Command("go", "build", "-o", agentBinary, ".")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "build agent: %v\n%s", err, out)
+		os.Exit(1)
+	}
+
+	os.Exit(m.Run())
 }
 
 // runAgent runs the agent binary with the given args and returns combined stdout+stderr.
-// Killed after 2s since the agent runs indefinitely.
-func runAgent(t *testing.T, bin string, env []string, args ...string) string {
+func runAgent(t *testing.T, env []string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(agentBinary, args...)
 	cmd.Env = env
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	_ = cmd.Start()
 
-	// Wait briefly then kill with SIGTERM so buffers are flushed.
-	time.Sleep(1500 * time.Millisecond)
+	// Wait briefly then kill so buffers are flushed.
+	time.Sleep(300 * time.Millisecond)
 	_ = cmd.Process.Signal(os.Interrupt)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
 	return out.String()
 }
 
 func TestAgentBinary_BuildInfoWithoutFlags(t *testing.T) {
-	out := runAgent(t, buildAgentBinary(t), nil)
+	out := runAgent(t, nil)
 
 	if !strings.Contains(out, "Build version: N/A") {
 		t.Errorf("expected Build version: N/A, got: %s", out)
@@ -65,7 +74,19 @@ func TestAgentBinary_BuildInfoWithLdflags(t *testing.T) {
 		t.Fatalf("build with ldflags: %v\n%s", err, out)
 	}
 
-	out := runAgent(t, bin, nil)
+	// Run the ldflags binary directly.
+	runcmd := exec.Command(bin)
+	var buf bytes.Buffer
+	runcmd.Stdout = &buf
+	runcmd.Stderr = &buf
+	_ = runcmd.Start()
+	time.Sleep(300 * time.Millisecond)
+	_ = runcmd.Process.Signal(os.Interrupt)
+	time.Sleep(50 * time.Millisecond)
+	_ = runcmd.Process.Kill()
+	_ = runcmd.Wait()
+	out := buf.String()
+
 	if !strings.Contains(out, "Build version: v1.0") {
 		t.Errorf("expected version v1.0, got: %s", out)
 	}
@@ -89,7 +110,7 @@ func TestAgentBinary_ConfigFileFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := runAgent(t, buildAgentBinary(t), nil, "-c", cfgPath)
+	out := runAgent(t, nil, "-c", cfgPath)
 
 	// The config file loading happens before flag.Parse and uses ResolveConfigPath.
 	// If the config file was loaded, the address from the config is used.
@@ -108,8 +129,7 @@ func TestAgentBinary_FlagOverridesConfig(t *testing.T) {
 	}
 
 	// -a should override config address. The crypto_key is still loaded from config.
-	bin := buildAgentBinary(t)
-	out := runAgent(t, bin, nil, "-c", cfgPath, "-a", "fromflag:2222", "-k", "testkey")
+	out := runAgent(t, nil, "-c", cfgPath, "-a", "fromflag:2222", "-k", "testkey")
 
 	// Because -a overrides the config address, the agent connects to fromflag:2222.
 	// crypto_key is from config — should still print the missing file error.
@@ -125,8 +145,7 @@ func TestAgentBinary_EnvOverridesConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bin := buildAgentBinary(t)
-	out := runAgent(t, bin, append(os.Environ(), "ADDRESS=fromenv:3333"), "-c", cfgPath)
+	out := runAgent(t, append(os.Environ(), "ADDRESS=fromenv:3333"), "-c", cfgPath)
 
 	if !strings.Contains(out, "/nonexistent/key.pem") {
 		t.Errorf("expected crypto_key from config, got:\n%s", out)
@@ -134,9 +153,7 @@ func TestAgentBinary_EnvOverridesConfig(t *testing.T) {
 }
 
 func TestAgentBinary_UnknownFlagShowsUsage(t *testing.T) {
-	bin := buildAgentBinary(t)
-
-	cmd := exec.Command(bin, "--nonexistent")
+	cmd := exec.Command(agentBinary, "--nonexistent")
 	out, _ := cmd.CombinedOutput()
 
 	if !strings.Contains(string(out), "flag provided but not defined") {

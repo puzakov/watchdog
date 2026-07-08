@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,38 +13,48 @@ import (
 	"github.com/puzakov/watchdog/internal/config"
 )
 
-// buildServerBinary builds the server binary and returns its path.
-func buildServerBinary(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "server.test")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build server: %v\n%s", err, out)
+var serverBinary string
+
+func TestMain(m *testing.M) {
+	// Build binary once for all tests.
+	dir, err := os.MkdirTemp("", "server-test-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create temp dir: %v\n", err)
+		os.Exit(1)
 	}
-	return bin
+	defer os.RemoveAll(dir)
+
+	serverBinary = filepath.Join(dir, "server.test")
+	cmd := exec.Command("go", "build", "-o", serverBinary, ".")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "build server: %v\n%s", err, out)
+		os.Exit(1)
+	}
+
+	os.Exit(m.Run())
 }
 
-// runServer starts the server with args, captures output for ~1.5s, then
+// runServer starts the server with args, captures output for ~300ms, then
 // sends Interrupt to let the server shut down gracefully and flush logs.
-func runServer(t *testing.T, bin string, env []string, args ...string) string {
+func runServer(t *testing.T, env []string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(serverBinary, args...)
 	cmd.Env = env
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	_ = cmd.Start()
 
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	_ = cmd.Process.Signal(os.Interrupt)
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
 	return out.String()
 }
 
 func TestServerBinary_BuildInfoWithoutFlags(t *testing.T) {
-	out := runServer(t, buildServerBinary(t), nil)
+	out := runServer(t, nil)
 
 	if !strings.Contains(out, "Build version: N/A") {
 		t.Errorf("expected Build version: N/A, got: %s", out)
@@ -64,8 +75,7 @@ func TestServerBinary_ConfigFileFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bin := buildServerBinary(t)
-	out := runServer(t, bin, nil, "-c", cfgPath)
+	out := runServer(t, nil, "-c", cfgPath)
 
 	if !strings.Contains(out, "nosuchhost") {
 		t.Errorf("expected address from config file, got:\n%s", out)
@@ -79,8 +89,7 @@ func TestServerBinary_FlagOverridesConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bin := buildServerBinary(t)
-	out := runServer(t, bin, nil, "-c", cfgPath, "-a", "fromflag:2222")
+	out := runServer(t, nil, "-c", cfgPath, "-a", "fromflag:2222")
 
 	if !strings.Contains(out, "fromflag") {
 		t.Errorf("expected flag address, got:\n%s", out)
@@ -94,8 +103,7 @@ func TestServerBinary_EnvOverridesConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bin := buildServerBinary(t)
-	out := runServer(t, bin, append(os.Environ(), "ADDRESS=fromenv:3333"), "-c", cfgPath)
+	out := runServer(t, append(os.Environ(), "ADDRESS=fromenv:3333"), "-c", cfgPath)
 
 	if !strings.Contains(out, "fromenv") {
 		t.Errorf("expected env address, got:\n%s", out)
@@ -103,8 +111,7 @@ func TestServerBinary_EnvOverridesConfig(t *testing.T) {
 }
 
 func TestServerBinary_UnknownFlagShowsUsage(t *testing.T) {
-	bin := buildServerBinary(t)
-	cmd := exec.Command(bin, "--badflag")
+	cmd := exec.Command(serverBinary, "--badflag")
 	out, _ := cmd.CombinedOutput()
 
 	if !strings.Contains(string(out), "flag provided but not defined") {
