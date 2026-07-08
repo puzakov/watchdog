@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,18 +35,51 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// runServer starts the server with args, captures output for ~300ms, then
-// sends Interrupt to let the server shut down gracefully and flush logs.
+// safeBuf is a goroutine-safe bytes.Buffer for use with cmd.Stdout/Stderr.
+type safeBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (sb *safeBuf) Write(p []byte) (int, error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.Write(p)
+}
+
+func (sb *safeBuf) Len() int {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.Len()
+}
+
+func (sb *safeBuf) String() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.String()
+}
+
+// runServer starts the server with args, captures output, then
+// sends Interrupt to let the server shut down gracefully.
 func runServer(t *testing.T, env []string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(serverBinary, args...)
 	cmd.Env = env
-	var out bytes.Buffer
+	var out safeBuf
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	_ = cmd.Start()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
 
-	time.Sleep(300 * time.Millisecond)
+	// Poll for output, kill as soon as we see any.
+	for range 40 { // max 2s wait
+		if out.Len() > 5 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	_ = cmd.Process.Signal(os.Interrupt)
 	time.Sleep(100 * time.Millisecond)
 	_ = cmd.Process.Kill()

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -32,18 +33,51 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// safeBuf is a goroutine-safe bytes.Buffer for use with cmd.Stdout/Stderr.
+type safeBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (sb *safeBuf) Write(p []byte) (int, error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.Write(p)
+}
+
+func (sb *safeBuf) Len() int {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.Len()
+}
+
+func (sb *safeBuf) String() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.String()
+}
+
 // runAgent runs the agent binary with the given args and returns combined stdout+stderr.
+// It polls for output and kills the process as soon as output appears (or after 2s max).
 func runAgent(t *testing.T, env []string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(agentBinary, args...)
 	cmd.Env = env
-	var out bytes.Buffer
+	var out safeBuf
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	_ = cmd.Start()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start agent: %v", err)
+	}
 
-	// Wait briefly then kill so buffers are flushed.
-	time.Sleep(300 * time.Millisecond)
+	// Poll for output, kill as soon as we see any.
+	for range 40 { // max 2s wait
+		if out.Len() > 5 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	_ = cmd.Process.Signal(os.Interrupt)
 	time.Sleep(50 * time.Millisecond)
 	_ = cmd.Process.Kill()
@@ -74,27 +108,31 @@ func TestAgentBinary_BuildInfoWithLdflags(t *testing.T) {
 		t.Fatalf("build with ldflags: %v\n%s", err, out)
 	}
 
-	// Run the ldflags binary directly.
+	var out safeBuf
 	runcmd := exec.Command(bin)
-	var buf bytes.Buffer
-	runcmd.Stdout = &buf
-	runcmd.Stderr = &buf
+	runcmd.Stdout = &out
+	runcmd.Stderr = &out
 	_ = runcmd.Start()
-	time.Sleep(300 * time.Millisecond)
+	for range 40 {
+		if out.Len() > 5 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	_ = runcmd.Process.Signal(os.Interrupt)
 	time.Sleep(50 * time.Millisecond)
 	_ = runcmd.Process.Kill()
 	_ = runcmd.Wait()
-	out := buf.String()
+	output := out.String()
 
-	if !strings.Contains(out, "Build version: v1.0") {
-		t.Errorf("expected version v1.0, got: %s", out)
+	if !strings.Contains(output, "Build version: v1.0") {
+		t.Errorf("expected version v1.0, got: %s", output)
 	}
-	if !strings.Contains(out, "Build date: today") {
-		t.Errorf("expected date today, got: %s", out)
+	if !strings.Contains(output, "Build date: today") {
+		t.Errorf("expected date today, got: %s", output)
 	}
-	if !strings.Contains(out, "Build commit: abc123") {
-		t.Errorf("expected commit abc123, got: %s", out)
+	if !strings.Contains(output, "Build commit: abc123") {
+		t.Errorf("expected commit abc123, got: %s", output)
 	}
 }
 
@@ -112,9 +150,6 @@ func TestAgentBinary_ConfigFileFlag(t *testing.T) {
 
 	out := runAgent(t, nil, "-c", cfgPath)
 
-	// The config file loading happens before flag.Parse and uses ResolveConfigPath.
-	// If the config file was loaded, the address from the config is used.
-	// crypto_key points to a missing file, so an error message appears on stdout.
 	if !strings.Contains(out, "/nonexistent/key.pem") {
 		t.Errorf("expected key path from config file, got:\n%s", out)
 	}
@@ -122,17 +157,13 @@ func TestAgentBinary_ConfigFileFlag(t *testing.T) {
 
 func TestAgentBinary_FlagOverridesConfig(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "agent.json")
-	// Config sets address but also specifies crypto_key for verification.
 	cfgContent := `{"address": "fromconfig:1111", "crypto_key": "/nonexistent/key.pem"}`
 	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// -a should override config address. The crypto_key is still loaded from config.
 	out := runAgent(t, nil, "-c", cfgPath, "-a", "fromflag:2222", "-k", "testkey")
 
-	// Because -a overrides the config address, the agent connects to fromflag:2222.
-	// crypto_key is from config — should still print the missing file error.
 	if !strings.Contains(out, "/nonexistent/key.pem") {
 		t.Errorf("expected crypto_key from config, got:\n%s", out)
 	}
