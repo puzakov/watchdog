@@ -184,8 +184,8 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 		}
 	}
 	defer func() {
-		_ = fileObserver.Close()
 		auditor.Shutdown()
+		_ = fileObserver.Close()
 	}()
 
 	h := handler.NewHandler(storage, conn, auditor)
@@ -211,7 +211,7 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 	}()
 
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	select {
 	case err := <-errCh:
@@ -231,6 +231,14 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
+
+		// Final save for periodic file persistence.
+		if fs != nil && cfg.StoreIntervalInt > 0 {
+			if err := fs.Save(storage.Snapshot(context.Background())); err != nil {
+				logger.Log.Error("final save: " + err.Error())
+			}
+		}
+
 		return nil
 	}
 }
