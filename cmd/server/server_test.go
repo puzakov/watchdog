@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(dir)
 
 	serverBinary = filepath.Join(dir, "server.test")
-	cmd := exec.Command("go", "build", "-o", serverBinary, ".")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", serverBinary, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build server: %v\n%s", err, out)
 		os.Exit(1)

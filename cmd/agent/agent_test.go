@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(dir)
 
 	agentBinary = filepath.Join(dir, "agent.test")
-	cmd := exec.Command("go", "build", "-o", agentBinary, ".")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", agentBinary, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build agent: %v\n%s", err, out)
 		os.Exit(1)
