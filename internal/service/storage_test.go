@@ -70,3 +70,38 @@ func TestMemStorage_SnapshotReturnsCopies(t *testing.T) {
 		t.Fatalf("c1 after external mutation = %v, want %v", c2["c1"], 1)
 	}
 }
+
+func TestMemStorage_UpdateBatch_UnknownType(t *testing.T) {
+	s := NewMemStorage()
+	ctx := context.Background()
+
+	err := s.UpdateBatch(ctx, []models.Metrics{
+		{ID: "test", MType: "unknown"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateBatch with unknown type should not error, got %v", err)
+	}
+}
+
+func TestMemStorage_UpdateBatch_NilValueAndDelta(t *testing.T) {
+	s := NewMemStorage()
+	ctx := context.Background()
+
+	// Metrics with nil Value/Delta should be skipped, not crash.
+	err := s.UpdateBatch(ctx, []models.Metrics{
+		{ID: "g1", MType: models.Gauge, Value: nil},
+		{ID: "c1", MType: models.Counter, Delta: nil},
+	})
+	if err != nil {
+		t.Fatalf("UpdateBatch with nil Value/Delta should not error, got %v", err)
+	}
+
+	// Verify nothing was stored.
+	g, c := s.Snapshot(ctx)
+	if _, ok := g["g1"]; ok {
+		t.Fatal("g1 should not be stored")
+	}
+	if _, ok := c["c1"]; ok {
+		t.Fatal("c1 should not be stored")
+	}
+}

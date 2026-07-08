@@ -189,3 +189,20 @@ func TestFileStore_RestoreWithEmptyPath(t *testing.T) {
 		t.Fatalf("Restore with empty path should return nil, got %v", err)
 	}
 }
+
+func TestFileStore_SaveWithEmptyPath(t *testing.T) {
+	fs := NewFileStore("")
+	err := fs.Save(map[string]float64{"g1": 1.0}, map[string]int64{"c1": 1})
+	if err != nil {
+		t.Fatalf("Save with empty path should return nil, got %v", err)
+	}
+}
+
+func TestFileStore_SaveUnwritableDir(t *testing.T) {
+	// Use a path inside /dev/null which is a file, not a directory, so MkdirAll fails.
+	fs := NewFileStore("/dev/null/subdir/metrics.json")
+	err := fs.Save(map[string]float64{"g1": 1.0}, nil)
+	if err == nil {
+		t.Fatal("expected error when saving to unwritable location")
+	}
+}
