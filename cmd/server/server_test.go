@@ -24,7 +24,7 @@ func TestRun_BasicInMemory(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(cfg, "")
+		done <- run(cfg, nil, "")
 	}()
 
 	// Wait a bit for server to start, then kill it.
@@ -57,7 +57,7 @@ func TestRun_WithFileStorage(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(cfg, "")
+		done <- run(cfg, nil, "")
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -88,7 +88,7 @@ func TestRun_WithFileStoragePersisting(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(cfg, "")
+		done <- run(cfg, nil, "")
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -118,7 +118,7 @@ func TestRun_WithAuditFile(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(cfg, "")
+		done <- run(cfg, nil, "")
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -144,7 +144,7 @@ func TestRun_InvalidAddress(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(cfg, "")
+		done <- run(cfg, nil, "")
 	}()
 
 	select {
