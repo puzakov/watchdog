@@ -5,20 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/puzakov/watchdog/internal/agent"
+	"github.com/puzakov/watchdog/internal/build"
+	"github.com/puzakov/watchdog/internal/config"
 	"github.com/puzakov/watchdog/internal/crypto"
-)
-
-// Build info — set via -ldflags at build time:
-//
-//	go build -ldflags "-X main.buildVersion=1.0.0 -X main.buildDate=$(date +%Y-%m-%d) -X main.buildCommit=$(git rev-parse --short HEAD)"
-var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
 )
 
 type EnvConfig struct {
@@ -30,23 +24,36 @@ type EnvConfig struct {
 	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
-func printBuildInfo() {
-	valOrNA := func(s string) string {
-		if s == "" {
-			return "N/A"
+func main() {
+	build.PrintInfo()
+
+	// Priority: flags > env vars > config file.
+	// Load config file first (lowest priority) to use its values as flag defaults.
+	var fileCfg *config.AgentConfigFile
+	if cfgPath := config.ResolveConfigPath(); cfgPath != "" {
+		var err error
+		fileCfg, err = config.LoadAgentConfigFile(cfgPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
 		}
-		return s
 	}
 
-	fmt.Printf("Build version: %s\n", valOrNA(buildVersion))
-	fmt.Printf("Build date: %s\n", valOrNA(buildDate))
-	fmt.Printf("Build commit: %s\n", valOrNA(buildCommit))
-}
-
-func main() {
-	printBuildInfo()
+	// Build flag defaults: config file value (if set) → hardcoded default.
+	loadStr := func(fileVal, hardcoded string) string {
+		if fileVal != "" {
+			return fileVal
+		}
+		return hardcoded
+	}
+	loadInt := func(fileVal, hardcoded int) int {
+		if fileVal != 0 {
+			return fileVal
+		}
+		return hardcoded
+	}
 
 	var (
+		configFile     string
 		addr           string
 		pollInterval   int
 		reportInterval int
@@ -55,11 +62,26 @@ func main() {
 		rateLimit      int
 	)
 
-	flag.StringVar(&addr, "a", "localhost:8080", "server address")
-	flag.IntVar(&pollInterval, "p", 2, "poll interval in seconds")
-	flag.IntVar(&reportInterval, "r", 10, "report interval in seconds")
-	flag.StringVar(&key, "k", "", "SHA256 hash key")
-	flag.StringVar(&cryptoKey, "crypto-key", "", "path to RSA public key file")
+	// Apply config file defaults.
+	if fileCfg != nil {
+		addr = fileCfg.Address
+		key = fileCfg.Key
+		cryptoKey = fileCfg.CryptoKey
+		if pi, err := config.ParseDurationSec(fileCfg.PollInterval); err == nil {
+			pollInterval = pi
+		}
+		if ri, err := config.ParseDurationSec(fileCfg.ReportInterval); err == nil {
+			reportInterval = ri
+		}
+	}
+
+	flag.StringVar(&configFile, "c", "", "path to config file")
+	flag.StringVar(&configFile, "config", "", "path to config file")
+	flag.StringVar(&addr, "a", loadStr(addr, "localhost:8080"), "server address")
+	flag.IntVar(&pollInterval, "p", loadInt(pollInterval, 2), "poll interval in seconds")
+	flag.IntVar(&reportInterval, "r", loadInt(reportInterval, 10), "report interval in seconds")
+	flag.StringVar(&key, "k", key, "SHA256 hash key")
+	flag.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to RSA public key file")
 	flag.IntVar(&rateLimit, "l", 4, "max concurrent outgoing HTTP requests (worker pool size)")
 	flag.Parse()
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/puzakov/watchdog/internal/audit"
+	"github.com/puzakov/watchdog/internal/build"
 	"github.com/puzakov/watchdog/internal/config"
 	"github.com/puzakov/watchdog/internal/crypto"
 	"github.com/puzakov/watchdog/internal/db"
@@ -26,32 +27,36 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-// Build info — set via -ldflags at build time:
-//
-//	go build -ldflags "-X main.buildVersion=1.0.0 -X main.buildDate=$(date +%Y-%m-%d) -X main.buildCommit=$(git rev-parse --short HEAD)"
-var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
-)
+func main() {
+	build.PrintInfo()
 
-func printBuildInfo() {
-	valOrNA := func(s string) string {
-		if s == "" {
-			return "N/A"
+	// Priority: flags > env vars > config file.
+	// Load config file first (lowest priority) to use its values as flag defaults.
+	var fileCfg *config.ServerConfigFile
+	if cfgPath := config.ResolveConfigPath(); cfgPath != "" {
+		var err error
+		fileCfg, err = config.LoadServerConfigFile(cfgPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
 		}
-		return s
 	}
 
-	fmt.Printf("Build version: %s\n", valOrNA(buildVersion))
-	fmt.Printf("Build date: %s\n", valOrNA(buildDate))
-	fmt.Printf("Build commit: %s\n", valOrNA(buildCommit))
-}
-
-func main() {
-	printBuildInfo()
+	// Build flag defaults: config file value (if set) → hardcoded default.
+	loadStr := func(fileVal, hardcoded string) string {
+		if fileVal != "" {
+			return fileVal
+		}
+		return hardcoded
+	}
+	loadInt := func(fileVal int, hardcoded int) int {
+		if fileVal != 0 {
+			return fileVal
+		}
+		return hardcoded
+	}
 
 	var (
+		configFile      string
 		addr            string
 		storeInterval   int
 		fileStoragePath string
@@ -64,15 +69,30 @@ func main() {
 		pprofAddr       string
 	)
 
-	flag.StringVar(&addr, "a", "localhost:8080", "server address")
-	flag.IntVar(&storeInterval, "i", 300, "store interval in seconds")
-	// Путь к файлу по-умолчанию пустой: файловое хранилище включается только
-	// при явном задании флага -f или переменной окружения FILE_STORAGE_PATH.
-	flag.StringVar(&fileStoragePath, "f", "", "file storage path")
-	flag.BoolVar(&restore, "r", false, "restore data from storage flag")
-	flag.StringVar(&databaseDsn, "d", "", "Database connection string")
-	flag.StringVar(&key, "k", "", "SHA256 hash key")
-	flag.StringVar(&cryptoKey, "crypto-key", "", "path to RSA private key file")
+	// Apply config file defaults.
+	if fileCfg != nil {
+		addr = fileCfg.Address
+		fileStoragePath = fileCfg.StoreFile
+		databaseDsn = fileCfg.DatabaseDSN
+		key = fileCfg.Key
+		cryptoKey = fileCfg.CryptoKey
+		if fileCfg.Restore != nil {
+			restore = *fileCfg.Restore
+		}
+		if si, err := config.ParseDurationSec(fileCfg.StoreInterval); err == nil {
+			storeInterval = si
+		}
+	}
+
+	flag.StringVar(&configFile, "c", "", "path to config file")
+	flag.StringVar(&configFile, "config", "", "path to config file")
+	flag.StringVar(&addr, "a", loadStr(addr, "localhost:8080"), "server address")
+	flag.IntVar(&storeInterval, "i", loadInt(storeInterval, 300), "store interval in seconds")
+	flag.StringVar(&fileStoragePath, "f", fileStoragePath, "file storage path")
+	flag.BoolVar(&restore, "r", restore, "restore data from storage flag")
+	flag.StringVar(&databaseDsn, "d", databaseDsn, "Database connection string")
+	flag.StringVar(&key, "k", key, "SHA256 hash key")
+	flag.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to RSA private key file")
 	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
 	flag.StringVar(&auditURL, "audit-url", "", "audit log URL")
 	flag.StringVar(&pprofAddr, "pprof", "", "pprof listen address (e.g. localhost:6060)")
