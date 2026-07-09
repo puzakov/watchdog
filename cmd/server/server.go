@@ -106,10 +106,9 @@ func main() {
 		var err error
 		privKey, err = crypto.LoadPrivateKey(cfg.CryptoKey)
 		if err != nil {
-			logger.Log.Error("failed to load private key: " + err.Error())
-		} else {
-			logger.Log.Info("RSA private key loaded from " + cfg.CryptoKey)
+			logger.Log.Fatal("failed to load private key: " + err.Error())
 		}
+		logger.Log.Info("RSA private key loaded from " + cfg.CryptoKey)
 	}
 
 	if err := run(cfg, privKey, pprofAddr); err != nil {

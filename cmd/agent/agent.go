@@ -114,7 +114,7 @@ func main() {
 	if cryptoKey != "" {
 		pubKey, err = crypto.LoadPublicKey(cryptoKey)
 		if err != nil {
-			fmt.Println(err.Error())
+			log.Fatalf("failed to load public key: %v", err)
 		}
 	}
 
