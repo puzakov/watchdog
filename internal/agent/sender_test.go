@@ -3,9 +3,13 @@ package agent
 import (
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"syscall"
 	"testing"
 
 	models "github.com/puzakov/watchdog/internal/model"
@@ -196,5 +200,127 @@ func TestSender_SendBatch_SendsExpectedRequest(t *testing.T) {
 	}
 	if got[1].ID != "PollCount" || got[1].MType != models.Counter || got[1].Delta == nil || *got[1].Delta != 42 || got[1].Value != nil {
 		t.Fatalf("unexpected payload[1]: %+v", got[1])
+	}
+}
+
+func TestSender_SendBatch_EmptySlice(t *testing.T) {
+	s := NewSender(SenderConfig{
+		ServerAddress: "http://localhost:8080",
+	})
+	if err := s.SendBatch(nil); err != nil {
+		t.Fatalf("SendBatch with nil slice should return nil, got %v", err)
+	}
+	if err := s.SendBatch([]models.Metrics{}); err != nil {
+		t.Fatalf("SendBatch with empty slice should return nil, got %v", err)
+	}
+}
+
+func TestSender_SendBatch_EndpointUnsupported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	s := NewSender(SenderConfig{
+		ServerAddress: srv.URL,
+		Client:        srv.Client(),
+	})
+
+	v := 1.0
+	err := s.SendBatch([]models.Metrics{
+		{ID: "test", MType: models.Gauge, Value: &v},
+	})
+	if err == nil {
+		t.Fatal("expected error for 404 response")
+	}
+	if !errors.Is(err, ErrEndpointUnsupported) {
+		t.Fatalf("expected ErrEndpointUnsupported, got %v", err)
+	}
+}
+
+func TestSender_SendBatch_MethodNotAllowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}))
+	t.Cleanup(srv.Close)
+
+	s := NewSender(SenderConfig{
+		ServerAddress: srv.URL,
+		Client:        srv.Client(),
+	})
+
+	v := 1.0
+	err := s.SendBatch([]models.Metrics{
+		{ID: "test", MType: models.Gauge, Value: &v},
+	})
+	if err == nil {
+		t.Fatal("expected error for 405 response")
+	}
+	if !errors.Is(err, ErrEndpointUnsupported) {
+		t.Fatalf("expected ErrEndpointUnsupported, got %v", err)
+	}
+}
+
+func TestIsRetriableConnectError(t *testing.T) {
+	// Plain error — not retriable.
+	if isRetriableConnectError(errors.New("plain error")) {
+		t.Error("plain error should not be retriable")
+	}
+
+	// url.Error wrapping a dial error — retriable.
+	dialErr := &url.Error{Op: "Post", URL: "http://localhost:8080", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}
+	if !isRetriableConnectError(dialErr) {
+		t.Error("dial error should be retriable")
+	}
+
+	// url.Error wrapping a non-dial net.OpError — not retriable.
+	readErr := &url.Error{Op: "Post", URL: "http://localhost:8080", Err: &net.OpError{Op: "read", Err: errors.New("connection reset")}}
+	if isRetriableConnectError(readErr) {
+		t.Error("read error should not be retriable by op check")
+	}
+
+	// Direct syscall errors.
+	if !isRetriableConnectError(syscall.ECONNREFUSED) {
+		t.Error("ECONNREFUSED should be retriable")
+	}
+	if !isRetriableConnectError(syscall.ECONNRESET) {
+		t.Error("ECONNRESET should be retriable")
+	}
+	if !isRetriableConnectError(syscall.EPIPE) {
+		t.Error("EPIPE should be retriable")
+	}
+	if !isRetriableConnectError(syscall.ETIMEDOUT) {
+		t.Error("ETIMEDOUT should be retriable")
+	}
+	if !isRetriableConnectError(syscall.ENETUNREACH) {
+		t.Error("ENETUNREACH should be retriable")
+	}
+	if !isRetriableConnectError(syscall.EHOSTUNREACH) {
+		t.Error("EHOSTUNREACH should be retriable")
+	}
+
+	// Non-retriable syscall error.
+	if isRetriableConnectError(syscall.ENOENT) {
+		t.Error("ENOENT should not be retriable")
+	}
+}
+
+func TestSender_NewSender_Defaults(t *testing.T) {
+	s := NewSender(SenderConfig{})
+	if s.cfg.ServerAddress != "http://localhost:8080" {
+		t.Fatalf("default ServerAddress = %q, want %q", s.cfg.ServerAddress, "http://localhost:8080")
+	}
+	if s.cfg.Client == nil {
+		t.Fatal("default Client should not be nil")
+	}
+	if s.cfg.Logger == nil {
+		t.Fatal("default Logger should not be nil")
+	}
+}
+
+func TestSender_NewSender_TrimsSlash(t *testing.T) {
+	s := NewSender(SenderConfig{ServerAddress: "http://example.com/"})
+	if s.cfg.ServerAddress != "http://example.com" {
+		t.Fatalf("ServerAddress = %q, want %q", s.cfg.ServerAddress, "http://example.com")
 	}
 }

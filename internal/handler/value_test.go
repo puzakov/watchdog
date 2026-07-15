@@ -101,3 +101,124 @@ func TestValueJSON_Counter_OK_ReturnsJSON(t *testing.T) {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
+
+func TestHandleValue_UnknownType(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/value/unknown/test", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleValue_Gauge_NotFound(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/value/gauge/nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleValue_Counter_NotFound(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/value/counter/nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleValueJSON_BadContentType(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/value/", nil)
+	req.Header.Set("Content-Type", "text/plain")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleValueJSON_InvalidJSON(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/value/", bytes.NewReader([]byte("not json")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleValueJSON_UnknownType(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	body, _ := json.Marshal(&models.Metrics{ID: "test", MType: "unknown"})
+	req := httptest.NewRequest(http.MethodPost, "/value/", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleValueJSON_Gauge_OK(t *testing.T) {
+	store := service.NewMemStorage()
+	_ = store.UpdateGauge(context.Background(), "Alloc", 5.5)
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	body, _ := json.Marshal(&models.Metrics{ID: "Alloc", MType: models.Gauge})
+	req := httptest.NewRequest(http.MethodPost, "/value/", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp models.Metrics
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Value == nil || *resp.Value != 5.5 {
+		t.Fatalf("Value = %v, want 5.5", resp.Value)
+	}
+}
+
+func TestHandleValueJSON_Gauge_NotFound(t *testing.T) {
+	store := service.NewMemStorage()
+	h := NewHandler(store, &db.DatabaseConnection{}, nil)
+
+	body, _ := json.Marshal(&models.Metrics{ID: "nonexistent", MType: models.Gauge})
+	req := httptest.NewRequest(http.MethodPost, "/value/", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}

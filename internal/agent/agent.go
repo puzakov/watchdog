@@ -4,12 +4,16 @@ package agent
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	models "github.com/puzakov/watchdog/internal/model"
@@ -29,6 +33,10 @@ type Config struct {
 	Timeout time.Duration
 	// Key used for SHA256 request signing (empty = no signing).
 	Key string
+	// CryptoKey is the RSA public key used to encrypt request bodies.
+	// When set, the gzip-compressed payload is encrypted before sending.
+	// If nil, no encryption is applied.
+	CryptoKey *rsa.PublicKey
 	// RateLimit is the maximum number of concurrent outgoing HTTP requests (worker pool size).
 	RateLimit int
 	// Logger for agent diagnostics. If nil, log.Default() is used.
@@ -78,30 +86,78 @@ func New(cfg Config) *Agent {
 			Client: &http.Client{
 				Timeout: cfg.Timeout,
 			},
-			Key:    cfg.Key,
-			Logger: cfg.Logger,
+			Key:       cfg.Key,
+			CryptoKey: cfg.CryptoKey,
+			Logger:    cfg.Logger,
 		}),
 		lastReportedCounters: make(map[string]int64),
 	}
 }
 
 // Run starts runtime polling, host metrics polling, reporting, and an HTTP worker pool.
-// It blocks forever (until the process is terminated).
+// It blocks until SIGINT, SIGTERM, or SIGQUIT is received, then gracefully shuts down:
+// stops polling, sends any remaining metrics, and waits for in-flight requests to complete.
 func (a *Agent) Run() {
 	workers := a.cfg.RateLimit
 	if workers < 1 {
 		workers = 1
 	}
 	a.poolTasks = make(chan func(), workers*64)
+
+	var workerWg sync.WaitGroup
 	for i := 0; i < workers; i++ {
-		go a.poolWorker()
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			a.poolWorker()
+		}()
 	}
 
-	go a.pollRuntimeLoop()
-	go a.pollHostLoop()
-	go a.reportLoop()
+	stop := make(chan struct{})
 
-	select {}
+	var pollWg sync.WaitGroup
+	pollWg.Add(1)
+	go func() {
+		defer pollWg.Done()
+		a.pollRuntimeLoop(stop)
+	}()
+	pollWg.Add(1)
+	go func() {
+		defer pollWg.Done()
+		a.pollHostLoop(stop)
+	}()
+
+	reportDone := make(chan struct{})
+	go func() {
+		a.reportLoop(stop)
+		close(reportDone)
+	}()
+
+	// Block until a termination signal is received.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	<-sig
+
+	a.cfg.Logger.Println("shutting down agent")
+
+	// Stop all collection loops — no new metrics will arrive in the store.
+	close(stop)
+
+	// Wait for poll loops to exit.
+	pollWg.Wait()
+
+	// Wait for the report loop to finish its current iteration. If the loop
+	// was in the middle of a report, it completes now. If it was idle (ticker),
+	// the stop signal made it exit without a final report — that's fine, we
+	// do a dedicated final flush below.
+	<-reportDone
+
+	// Final report: send any metrics that were collected but not yet reported.
+	a.reportOnce()
+
+	// Close the worker pool and wait for all in-flight sends to complete.
+	close(a.poolTasks)
+	workerWg.Wait()
 }
 
 func (a *Agent) poolWorker() {
@@ -123,22 +179,32 @@ func (a *Agent) runPooled(fn func() error) error {
 	return <-errCh
 }
 
-func (a *Agent) pollRuntimeLoop() {
+func (a *Agent) pollRuntimeLoop(stop <-chan struct{}) {
 	a.pollOnce()
 	t := time.NewTicker(a.cfg.PollInterval)
 	defer t.Stop()
-	for range t.C {
-		a.pollOnce()
+	for {
+		select {
+		case <-t.C:
+			a.pollOnce()
+		case <-stop:
+			return
+		}
 	}
 }
 
-func (a *Agent) pollHostLoop() {
+func (a *Agent) pollHostLoop(stop <-chan struct{}) {
 	ctx := context.Background()
 	a.collectHostOnce(ctx)
 	t := time.NewTicker(a.cfg.PollInterval)
 	defer t.Stop()
-	for range t.C {
-		a.collectHostOnce(ctx)
+	for {
+		select {
+		case <-t.C:
+			a.collectHostOnce(ctx)
+		case <-stop:
+			return
+		}
 	}
 }
 
@@ -148,12 +214,17 @@ func (a *Agent) collectHostOnce(ctx context.Context) {
 	}
 }
 
-func (a *Agent) reportLoop() {
+func (a *Agent) reportLoop(stop <-chan struct{}) {
 	a.reportOnce()
 	t := time.NewTicker(a.cfg.ReportInterval)
 	defer t.Stop()
-	for range t.C {
-		a.reportOnce()
+	for {
+		select {
+		case <-t.C:
+			a.reportOnce()
+		case <-stop:
+			return
+		}
 	}
 }
 
