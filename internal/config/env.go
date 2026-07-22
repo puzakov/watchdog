@@ -21,11 +21,12 @@ type EnvConfig struct {
 	CryptoKey        string `env:"CRYPTO_KEY"`
 	AuditFile        string `env:"AUDIT_FILE"`
 	AuditURL         string `env:"AUDIT_URL"`
+	TrustedSubnet    string `env:"TRUSTED_SUBNET"`
 }
 
 // AppConfig merges flag-provided values with environment variables (env takes precedence)
 // and returns a fully populated EnvConfig.
-func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string, cryptoKey string) *EnvConfig {
+func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string, cryptoKey string, trustedSubnet string) *EnvConfig {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -59,6 +60,9 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 	if cfg.CryptoKey != "" {
 		cryptoKey = cfg.CryptoKey
 	}
+	if cfg.TrustedSubnet != "" {
+		trustedSubnet = cfg.TrustedSubnet
+	}
 
 	return &EnvConfig{
 		Addr:             addr,
@@ -70,5 +74,6 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 		CryptoKey:        cryptoKey,
 		AuditFile:        auditFile,
 		AuditURL:         auditURL,
+		TrustedSubnet:    trustedSubnet,
 	}
 }
