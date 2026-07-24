@@ -13,6 +13,7 @@ import (
 // Field names use snake_case to match the documented JSON format.
 type ServerConfigFile struct {
 	Address       string `json:"address"`
+	GRPCAddress   string `json:"grpc_address"`
 	Restore       *bool  `json:"restore,omitempty"`
 	StoreInterval string `json:"store_interval"` // duration string, e.g. "300s"
 	StoreFile     string `json:"store_file"`
@@ -25,6 +26,7 @@ type ServerConfigFile struct {
 // AgentConfigFile represents the JSON configuration file for the agent.
 type AgentConfigFile struct {
 	Address        string `json:"address"`
+	GRPCAddress    string `json:"grpc_address"`
 	ReportInterval string `json:"report_interval"` // duration string, e.g. "10s"
 	PollInterval   string `json:"poll_interval"`   // duration string, e.g. "2s"
 	CryptoKey      string `json:"crypto_key"`

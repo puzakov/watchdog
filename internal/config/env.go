@@ -12,6 +12,7 @@ import (
 // Environment variables take precedence over flag defaults.
 type EnvConfig struct {
 	Addr             string `env:"ADDRESS"`
+	GRPCAddr         string `env:"GRPC_ADDRESS"`
 	StoreInterval    *int   `env:"STORE_INTERVAL"`
 	StoreIntervalInt int
 	FileStoragePath  string `env:"FILE_STORAGE_PATH"`
@@ -26,7 +27,7 @@ type EnvConfig struct {
 
 // AppConfig merges flag-provided values with environment variables (env takes precedence)
 // and returns a fully populated EnvConfig.
-func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string, cryptoKey string, trustedSubnet string) *EnvConfig {
+func AppConfig(addr string, grpcAddr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string, cryptoKey string, trustedSubnet string) *EnvConfig {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -35,6 +36,9 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 
 	if cfg.Addr != "" {
 		addr = cfg.Addr
+	}
+	if cfg.GRPCAddr != "" {
+		grpcAddr = cfg.GRPCAddr
 	}
 	if cfg.StoreInterval != nil {
 		storeInterval = cfg.StoreIntervalInt
@@ -66,6 +70,7 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 
 	return &EnvConfig{
 		Addr:             addr,
+		GRPCAddr:         grpcAddr,
 		StoreIntervalInt: storeInterval,
 		FileStoragePath:  fileStoragePath,
 		Restore:          restore,
