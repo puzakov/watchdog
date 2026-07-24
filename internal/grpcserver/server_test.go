@@ -10,14 +10,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/puzakov/watchdog/internal/audit"
 	proto "github.com/puzakov/watchdog/internal/proto"
 	"github.com/puzakov/watchdog/internal/service"
 )
-
-const bufSize = 1024 * 1024
 
 type testAuditObserver struct {
 	mu     sync.Mutex
@@ -38,30 +35,28 @@ func (o *testAuditObserver) Events() []audit.Event {
 	return out
 }
 
-// setupTestServer creates a gRPC test server with bufconn transport and returns
+// setupTestServer creates a gRPC test server on a random TCP port and returns
 // a client, storage, and cleanup function.
 func setupTestServer(t *testing.T, store service.Storage, auditor *audit.Subject) (proto.MetricsClient, func()) {
 	t.Helper()
 
-	listener := bufconn.Listen(bufSize)
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+
 	srv := grpc.NewServer()
 	proto.RegisterMetricsServer(srv, NewMetricsServer(store, auditor))
 
 	go func() {
-		if err := srv.Serve(listener); err != nil {
-			panic(err)
-		}
+		_ = srv.Serve(lis)
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "bufnet",
-		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
-			return listener.Dial()
-		}),
+	conn, err := grpc.NewClient(lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
-		t.Fatalf("failed to dial bufnet: %v", err)
+		t.Fatalf("failed to create gRPC client: %v", err)
 	}
 
 	client := proto.NewMetricsClient(conn)
@@ -69,7 +64,7 @@ func setupTestServer(t *testing.T, store service.Storage, auditor *audit.Subject
 	cleanup := func() {
 		conn.Close()
 		srv.Stop()
-		listener.Close()
+		lis.Close()
 	}
 
 	return client, cleanup
