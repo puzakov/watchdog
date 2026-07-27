@@ -43,34 +43,52 @@ func (s *GRPCSender) Close() error {
 
 // SendBatch sends metrics via gRPC. Returns an error if the send fails.
 func (s *GRPCSender) SendBatch(ctx context.Context, metrics []models.Metrics) error {
-	req := &proto.UpdateMetricsRequest{
-		Metrics: make([]*proto.Metric, 0, len(metrics)),
-	}
+	pbMetrics := make([]*proto.Metric, 0, len(metrics))
 
 	for _, m := range metrics {
-		pbMetric := &proto.Metric{
-			Id: m.ID,
-		}
+		var typ proto.Metric_MType
+		var delta int64
+		var value float64
+		hasDelta := false
+		hasValue := false
+
 		switch m.MType {
 		case models.Gauge:
-			pbMetric.Type = proto.Metric_GAUGE
+			typ = proto.Metric_GAUGE
 			if m.Value != nil {
-				pbMetric.Value = *m.Value
+				value = *m.Value
+				hasValue = true
 			}
 		case models.Counter:
-			pbMetric.Type = proto.Metric_COUNTER
+			typ = proto.Metric_COUNTER
 			if m.Delta != nil {
-				pbMetric.Delta = *m.Delta
+				delta = *m.Delta
+				hasDelta = true
 			}
 		default:
 			continue
 		}
-		req.Metrics = append(req.Metrics, pbMetric)
+
+		b := proto.Metric_builder{
+			Id:   m.ID,
+			Type: typ,
+		}
+		if hasValue {
+			b.Value = value
+		}
+		if hasDelta {
+			b.Delta = delta
+		}
+		pbMetrics = append(pbMetrics, b.Build())
 	}
 
-	if len(req.Metrics) == 0 {
+	if len(pbMetrics) == 0 {
 		return nil
 	}
+
+	req := proto.UpdateMetricsRequest_builder{
+		Metrics: pbMetrics,
+	}.Build()
 
 	md := metadata.Pairs("x-real-ip", s.localIP)
 	grpcCtx := metadata.NewOutgoingContext(ctx, md)

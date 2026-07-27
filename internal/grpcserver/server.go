@@ -40,37 +40,38 @@ func (s *MetricsServer) UpdateMetrics(ctx context.Context, req *proto.UpdateMetr
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	batch := make([]models.Metrics, 0, len(req.Metrics))
-	ids := make([]string, 0, len(req.Metrics))
+	metrics := req.GetMetrics()
+	batch := make([]models.Metrics, 0, len(metrics))
+	ids := make([]string, 0, len(metrics))
 
-	for _, m := range req.Metrics {
+	for _, m := range metrics {
 		if m == nil {
 			continue
 		}
 
 		mm := models.Metrics{
-			ID: m.Id,
+			ID: m.GetId(),
 		}
 
-		switch m.Type {
+		switch m.GetType() {
 		case proto.Metric_GAUGE:
 			mm.MType = models.Gauge
-			v := m.Value
+			v := m.GetValue()
 			mm.Value = &v
 		case proto.Metric_COUNTER:
 			mm.MType = models.Counter
-			d := m.Delta
+			d := m.GetDelta()
 			mm.Delta = &d
 		default:
 			logger.Log.Warn("unknown metric type in gRPC request",
-				zap.String("id", m.Id),
-				zap.Int32("type", int32(m.Type)),
+				zap.String("id", m.GetId()),
+				zap.Int32("type", int32(m.GetType())),
 			)
 			continue
 		}
 
 		batch = append(batch, mm)
-		ids = append(ids, m.Id)
+		ids = append(ids, m.GetId())
 	}
 
 	if len(batch) == 0 {

@@ -77,12 +77,12 @@ func TestMetricsServer_UpdateMetrics_Success(t *testing.T) {
 	client, cleanup := setupTestServer(t, store, nil)
 	defer cleanup()
 
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{
-			{Id: "test_gauge", Type: proto.Metric_GAUGE, Value: 42.5},
-			{Id: "test_counter", Type: proto.Metric_COUNTER, Delta: 10},
+			proto.Metric_builder{Id: "test_gauge", Type: proto.Metric_GAUGE, Value: 42.5}.Build(),
+			proto.Metric_builder{Id: "test_counter", Type: proto.Metric_COUNTER, Delta: 10}.Build(),
 		},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
@@ -105,8 +105,6 @@ func TestMetricsServer_UpdateMetrics_Success(t *testing.T) {
 }
 
 func TestMetricsServer_UpdateMetrics_NilThroughInterceptor_ReturnsInvalidArgument(t *testing.T) {
-	// Direct test of the server's nil check (not via gRPC, since gRPC
-	// serializes nil as an empty message before it reaches the handler).
 	s := NewMetricsServer(service.NewMemStorage(), nil)
 	_, err := s.UpdateMetrics(context.Background(), nil)
 	if err == nil {
@@ -122,9 +120,9 @@ func TestMetricsServer_UpdateMetrics_EmptyMetricsList_ReturnsSuccess(t *testing.
 	client, cleanup := setupTestServer(t, store, nil)
 	defer cleanup()
 
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
@@ -135,19 +133,17 @@ func TestMetricsServer_UpdateMetrics_OnlyNilMetrics_ReturnsSuccess(t *testing.T)
 	client, cleanup := setupTestServer(t, store, nil)
 	defer cleanup()
 
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{nil, nil},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
 
-	// Storage should be empty
-	g, ok := store.GetGauge(context.Background(), "any")
+	_, ok := store.GetGauge(context.Background(), "any")
 	if ok {
 		t.Fatal("expected no gauges")
 	}
-	_ = g
 }
 
 func TestMetricsServer_UpdateMetrics_UnknownMetricType_Skipped(t *testing.T) {
@@ -155,13 +151,12 @@ func TestMetricsServer_UpdateMetrics_UnknownMetricType_Skipped(t *testing.T) {
 	client, cleanup := setupTestServer(t, store, nil)
 	defer cleanup()
 
-	// Metric_MType(99) is an unknown type.
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{
-			{Id: "unknown", Type: proto.Metric_MType(99), Value: 1.0},
-			{Id: "valid_gauge", Type: proto.Metric_GAUGE, Value: 1.0},
+			proto.Metric_builder{Id: "unknown", Type: proto.Metric_MType(99)}.Build(),
+			proto.Metric_builder{Id: "valid_gauge", Type: proto.Metric_GAUGE, Value: 1.0}.Build(),
 		},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
@@ -186,17 +181,16 @@ func TestMetricsServer_UpdateMetrics_NotifiesAuditor(t *testing.T) {
 	client, cleanup := setupTestServer(t, store, auditor)
 	defer cleanup()
 
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{
-			{Id: "metric1", Type: proto.Metric_GAUGE, Value: 1.0},
-			{Id: "metric2", Type: proto.Metric_COUNTER, Delta: 5},
+			proto.Metric_builder{Id: "metric1", Type: proto.Metric_GAUGE, Value: 1.0}.Build(),
+			proto.Metric_builder{Id: "metric2", Type: proto.Metric_COUNTER, Delta: 5}.Build(),
 		},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
 
-	// Audit is async; wait briefly for the event to arrive.
 	events := observer.Events()
 	if len(events) == 0 {
 		t.Fatal("expected audit event, got none")
@@ -211,11 +205,11 @@ func TestMetricsServer_UpdateMetrics_NilAuditor_SkipsNotification(t *testing.T) 
 	client, cleanup := setupTestServer(t, store, audit.NewSubject())
 	defer cleanup()
 
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{
-			{Id: "metric1", Type: proto.Metric_GAUGE, Value: 1.0},
+			proto.Metric_builder{Id: "metric1", Type: proto.Metric_GAUGE, Value: 1.0}.Build(),
 		},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
@@ -226,19 +220,18 @@ func TestMetricsServer_UpdateMetrics_MixedCounterAndGauge(t *testing.T) {
 	client, cleanup := setupTestServer(t, store, nil)
 	defer cleanup()
 
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{
-			{Id: "gauge1", Type: proto.Metric_GAUGE, Value: 1.1},
-			{Id: "gauge2", Type: proto.Metric_GAUGE, Value: 2.2},
-			{Id: "counter1", Type: proto.Metric_COUNTER, Delta: 100},
-			{Id: "counter2", Type: proto.Metric_COUNTER, Delta: 200},
+			proto.Metric_builder{Id: "gauge1", Type: proto.Metric_GAUGE, Value: 1.1}.Build(),
+			proto.Metric_builder{Id: "gauge2", Type: proto.Metric_GAUGE, Value: 2.2}.Build(),
+			proto.Metric_builder{Id: "counter1", Type: proto.Metric_COUNTER, Delta: 100}.Build(),
+			proto.Metric_builder{Id: "counter2", Type: proto.Metric_COUNTER, Delta: 200}.Build(),
 		},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
 
-	// Verify all stored.
 	gauges, counters := store.Snapshot(context.Background())
 	if len(gauges) != 2 {
 		t.Fatalf("expected 2 gauges, got %d", len(gauges))
@@ -253,13 +246,12 @@ func TestMetricsServer_UpdateMetrics_CounterDeltaAccumulates(t *testing.T) {
 	client, cleanup := setupTestServer(t, store, nil)
 	defer cleanup()
 
-	// Send same counter twice.
 	for i := 0; i < 3; i++ {
-		_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+		_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 			Metrics: []*proto.Metric{
-				{Id: "acc_counter", Type: proto.Metric_COUNTER, Delta: 10},
+				proto.Metric_builder{Id: "acc_counter", Type: proto.Metric_COUNTER, Delta: 10}.Build(),
 			},
-		})
+		}.Build())
 		if err != nil {
 			t.Fatalf("UpdateMetrics iteration %d failed: %v", i, err)
 		}
@@ -279,21 +271,20 @@ func TestMetricsServer_UpdateMetrics_GaugeReplacesValue(t *testing.T) {
 	client, cleanup := setupTestServer(t, store, nil)
 	defer cleanup()
 
-	// Send same gauge twice.
-	_, err := client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err := client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{
-			{Id: "rep_gauge", Type: proto.Metric_GAUGE, Value: 10.0},
+			proto.Metric_builder{Id: "rep_gauge", Type: proto.Metric_GAUGE, Value: 10.0}.Build(),
 		},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("first update failed: %v", err)
 	}
 
-	_, err = client.UpdateMetrics(context.Background(), &proto.UpdateMetricsRequest{
+	_, err = client.UpdateMetrics(context.Background(), proto.UpdateMetricsRequest_builder{
 		Metrics: []*proto.Metric{
-			{Id: "rep_gauge", Type: proto.Metric_GAUGE, Value: 20.0},
+			proto.Metric_builder{Id: "rep_gauge", Type: proto.Metric_GAUGE, Value: 20.0}.Build(),
 		},
-	})
+	}.Build())
 	if err != nil {
 		t.Fatalf("second update failed: %v", err)
 	}
@@ -308,7 +299,6 @@ func TestMetricsServer_UpdateMetrics_GaugeReplacesValue(t *testing.T) {
 }
 
 func TestNewMetricsServer_NilStore_DoesNotPanic(t *testing.T) {
-	// It should create the server without panicking, though it will fail on use.
 	s := NewMetricsServer(nil, nil)
 	if s == nil {
 		t.Fatal("expected non-nil server")
