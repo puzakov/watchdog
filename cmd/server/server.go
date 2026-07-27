@@ -201,10 +201,16 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 	}()
 
 	h := handler.NewHandler(storage, conn, auditor)
-	h = middleware.HashSHA256(cfg.Key, h)
+	if cfg.Key != "" {
+		h = middleware.HashSHA256(cfg.Key, h)
+	}
 	h = middleware.Gzip(h)
-	h = middleware.DecryptRSA(privKey, h)
-	h = middleware.CheckSubnet(cfg.TrustedSubnet, h)
+	if privKey != nil {
+		h = middleware.DecryptRSA(privKey, h)
+	}
+	if cfg.TrustedSubnet != "" {
+		h = middleware.CheckSubnet(cfg.TrustedSubnet, h)
+	}
 	h = middleware.LogRequest(h)
 
 	var (
