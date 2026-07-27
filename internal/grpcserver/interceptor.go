@@ -36,25 +36,25 @@ func TrustedSubnetInterceptor(trustedSubnet string) grpc.UnaryServerInterceptor 
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			logger.Log.Warn("gRPC request missing metadata")
+			logger.Log.Debug("gRPC request missing metadata")
 			return nil, status.Error(codes.PermissionDenied, "missing metadata")
 		}
 
 		values := md.Get("x-real-ip")
 		if len(values) == 0 {
-			logger.Log.Warn("gRPC request missing x-real-ip metadata")
+			logger.Log.Debug("gRPC request missing x-real-ip metadata")
 			return nil, status.Error(codes.PermissionDenied, "missing x-real-ip")
 		}
 
 		ipStr := values[0]
 		ip := net.ParseIP(ipStr)
 		if ip == nil {
-			logger.Log.Warn("invalid x-real-ip in gRPC metadata", zap.String("ip", ipStr))
+			logger.Log.Debug("invalid x-real-ip in gRPC metadata", zap.String("ip", ipStr))
 			return nil, status.Error(codes.PermissionDenied, "invalid x-real-ip")
 		}
 
 		if !cidr.Contains(ip) {
-			logger.Log.Warn("gRPC request from untrusted IP",
+			logger.Log.Debug("gRPC request from untrusted IP",
 				zap.String("ip", ipStr),
 				zap.String("trusted_subnet", trustedSubnet),
 			)
