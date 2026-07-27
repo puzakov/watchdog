@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/puzakov/watchdog/internal/crypto"
 	models "github.com/puzakov/watchdog/internal/model"
 	proto "github.com/puzakov/watchdog/internal/proto"
 )
@@ -20,9 +20,10 @@ type GRPCSender struct {
 }
 
 // NewGRPCSender creates a gRPC client connection and sender.
+// Uses TLS with an embedded self-signed certificate for encryption.
 func NewGRPCSender(address string, localIP string) (*GRPCSender, error) {
 	conn, err := grpc.NewClient(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(crypto.GRPCClientCredentials()),
 	)
 	if err != nil {
 		return nil, err

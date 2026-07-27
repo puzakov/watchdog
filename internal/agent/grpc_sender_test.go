@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/puzakov/watchdog/internal/audit"
+	"github.com/puzakov/watchdog/internal/crypto"
 	grpcserver "github.com/puzakov/watchdog/internal/grpcserver"
 	models "github.com/puzakov/watchdog/internal/model"
 	proto "github.com/puzakov/watchdog/internal/proto"
@@ -24,7 +25,9 @@ func startTestGRPCServer(t *testing.T, store service.Storage) (addr string, clea
 		t.Fatalf("failed to listen: %v", err)
 	}
 
-	srv := grpc.NewServer()
+	srv := grpc.NewServer(
+		grpc.Creds(crypto.GRPCServerCredentials()),
+	)
 
 	// Use a real auditor with capacity=0 observers so Notify is a no-op
 	// (Subject.Notify returns early when len(observers) == 0).

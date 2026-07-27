@@ -8,10 +8,10 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	"github.com/puzakov/watchdog/internal/audit"
+	"github.com/puzakov/watchdog/internal/crypto"
 	proto "github.com/puzakov/watchdog/internal/proto"
 	"github.com/puzakov/watchdog/internal/service"
 )
@@ -45,7 +45,9 @@ func setupTestServer(t *testing.T, store service.Storage, auditor *audit.Subject
 		t.Fatalf("failed to listen: %v", err)
 	}
 
-	srv := grpc.NewServer()
+	srv := grpc.NewServer(
+		grpc.Creds(crypto.GRPCServerCredentials()),
+	)
 	proto.RegisterMetricsServer(srv, NewMetricsServer(store, auditor))
 
 	go func() {
@@ -53,7 +55,7 @@ func setupTestServer(t *testing.T, store service.Storage, auditor *audit.Subject
 	}()
 
 	conn, err := grpc.NewClient(lis.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(crypto.GRPCClientCredentials()),
 	)
 	if err != nil {
 		t.Fatalf("failed to create gRPC client: %v", err)

@@ -19,7 +19,6 @@ import (
 	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/build"
 	"github.com/puzakov/watchdog/internal/config"
-	"github.com/puzakov/watchdog/internal/crypto"
 	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/db/migrations"
 	grpcserver "github.com/puzakov/watchdog/internal/grpcserver"
@@ -31,6 +30,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/puzakov/watchdog/internal/crypto"
 	proto "github.com/puzakov/watchdog/internal/proto"
 )
 
@@ -219,6 +219,7 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 
 		grpcSrv = grpc.NewServer(
 			grpc.UnaryInterceptor(grpcserver.TrustedSubnetInterceptor(cfg.TrustedSubnet)),
+			grpc.Creds(crypto.GRPCServerCredentials()),
 		)
 		proto.RegisterMetricsServer(grpcSrv, grpcserver.NewMetricsServer(storage, auditor))
 		reflection.Register(grpcSrv)
