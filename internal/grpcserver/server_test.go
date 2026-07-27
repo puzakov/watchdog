@@ -3,8 +3,8 @@ package grpcserver
 import (
 	"context"
 	"net"
-	"sync"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -16,23 +16,22 @@ import (
 	"github.com/puzakov/watchdog/internal/service"
 )
 
-type testAuditObserver struct {
-	mu     sync.Mutex
-	events []audit.Event
+// channelAuditObserver sends each received event on a channel.
+// Tests can wait on the channel to synchronise with async audit delivery.
+type channelAuditObserver struct {
+	ch chan audit.Event
 }
 
-func (o *testAuditObserver) Notify(e audit.Event) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.events = append(o.events, e)
+func newChannelAuditObserver() *channelAuditObserver {
+	return &channelAuditObserver{ch: make(chan audit.Event, 16)}
 }
 
-func (o *testAuditObserver) Events() []audit.Event {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	out := make([]audit.Event, len(o.events))
-	copy(out, o.events)
-	return out
+func (o *channelAuditObserver) Notify(e audit.Event) {
+	select {
+	case o.ch <- e:
+	default:
+		// drop if buffer full — same as Subject behaviour
+	}
 }
 
 // setupTestServer creates a gRPC test server on a random TCP port and returns
@@ -174,8 +173,8 @@ func TestMetricsServer_UpdateMetrics_UnknownMetricType_Skipped(t *testing.T) {
 
 func TestMetricsServer_UpdateMetrics_NotifiesAuditor(t *testing.T) {
 	store := service.NewMemStorage()
-	observer := &testAuditObserver{}
-	auditor := audit.NewSubject(observer)
+	chObserver := newChannelAuditObserver()
+	auditor := audit.NewSubject(chObserver)
 	defer auditor.Shutdown()
 
 	client, cleanup := setupTestServer(t, store, auditor)
@@ -191,12 +190,13 @@ func TestMetricsServer_UpdateMetrics_NotifiesAuditor(t *testing.T) {
 		t.Fatalf("UpdateMetrics failed: %v", err)
 	}
 
-	events := observer.Events()
-	if len(events) == 0 {
-		t.Fatal("expected audit event, got none")
-	}
-	if len(events[0].Metrics) != 2 {
-		t.Fatalf("expected 2 metric IDs in audit event, got %d", len(events[0].Metrics))
+	select {
+	case event := <-chObserver.ch:
+		if len(event.Metrics) != 2 {
+			t.Fatalf("expected 2 metric IDs in audit event, got %d", len(event.Metrics))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for audit event")
 	}
 }
 
