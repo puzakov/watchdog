@@ -45,7 +45,7 @@ func setupTestServer(t *testing.T, store service.Storage, auditor *audit.Subject
 	}
 
 	srv := grpc.NewServer(
-		grpc.Creds(crypto.GRPCServerCredentials()),
+		grpc.Creds(crypto.MustLoadOrGenerateServerCreds()),
 	)
 	proto.RegisterMetricsServer(srv, NewMetricsServer(store, auditor))
 
@@ -54,7 +54,7 @@ func setupTestServer(t *testing.T, store service.Storage, auditor *audit.Subject
 	}()
 
 	conn, err := grpc.NewClient(lis.Addr().String(),
-		grpc.WithTransportCredentials(crypto.GRPCClientCredentials()),
+		grpc.WithTransportCredentials(crypto.MustLoadOrGenerateClientCreds()),
 	)
 	if err != nil {
 		t.Fatalf("failed to create gRPC client: %v", err)

@@ -26,7 +26,7 @@ func startTestGRPCServer(t *testing.T, store service.Storage) (addr string, clea
 	}
 
 	srv := grpc.NewServer(
-		grpc.Creds(crypto.GRPCServerCredentials()),
+		grpc.Creds(crypto.MustLoadOrGenerateServerCreds()),
 	)
 
 	// Use a real auditor with capacity=0 observers so Notify is a no-op
@@ -55,7 +55,7 @@ func TestGRPCSender_SendBatch_Success(t *testing.T) {
 	addr, cleanup := startTestGRPCServer(t, store)
 	defer cleanup()
 
-	sender, err := NewGRPCSender(addr, "10.0.0.1")
+	sender, err := NewGRPCSender(addr, "10.0.0.1", "")
 	if err != nil {
 		t.Fatalf("NewGRPCSender failed: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestGRPCSender_SendBatch_EmptyList(t *testing.T) {
 	addr, cleanup := startTestGRPCServer(t, store)
 	defer cleanup()
 
-	sender, err := NewGRPCSender(addr, "10.0.0.1")
+	sender, err := NewGRPCSender(addr, "10.0.0.1", "")
 	if err != nil {
 		t.Fatalf("NewGRPCSender failed: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestGRPCSender_SendBatch_SingleGauge(t *testing.T) {
 	addr, cleanup := startTestGRPCServer(t, store)
 	defer cleanup()
 
-	sender, err := NewGRPCSender(addr, "10.0.0.1")
+	sender, err := NewGRPCSender(addr, "10.0.0.1", "")
 	if err != nil {
 		t.Fatalf("NewGRPCSender failed: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestGRPCSender_SendBatch_SingleCounter(t *testing.T) {
 	addr, cleanup := startTestGRPCServer(t, store)
 	defer cleanup()
 
-	sender, err := NewGRPCSender(addr, "10.0.0.1")
+	sender, err := NewGRPCSender(addr, "10.0.0.1", "")
 	if err != nil {
 		t.Fatalf("NewGRPCSender failed: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestGRPCSender_SendBatch_UnknownType_Skipped(t *testing.T) {
 	addr, cleanup := startTestGRPCServer(t, store)
 	defer cleanup()
 
-	sender, err := NewGRPCSender(addr, "10.0.0.1")
+	sender, err := NewGRPCSender(addr, "10.0.0.1", "")
 	if err != nil {
 		t.Fatalf("NewGRPCSender failed: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestGRPCSender_SendBatch_UnknownType_Skipped(t *testing.T) {
 }
 
 func TestGRPCSender_NewGRPCSender_InvalidAddress(t *testing.T) {
-	sender, err := NewGRPCSender("invalid:address!!!", "10.0.0.1")
+	sender, err := NewGRPCSender("invalid:address!!!", "10.0.0.1", "")
 	if err != nil {
 		// In some environments the gRPC client may error immediately.
 		return
@@ -206,7 +206,7 @@ func TestGRPCSender_Close_Multiple(t *testing.T) {
 	addr, cleanup := startTestGRPCServer(t, store)
 	defer cleanup()
 
-	sender, err := NewGRPCSender(addr, "10.0.0.1")
+	sender, err := NewGRPCSender(addr, "10.0.0.1", "")
 	if err != nil {
 		t.Fatalf("NewGRPCSender failed: %v", err)
 	}

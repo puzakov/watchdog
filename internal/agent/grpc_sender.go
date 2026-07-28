@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"google.golang.org/grpc"
@@ -20,10 +21,16 @@ type GRPCSender struct {
 }
 
 // NewGRPCSender creates a gRPC client connection and sender.
-// Uses TLS with an embedded self-signed certificate for encryption.
-func NewGRPCSender(address string, localIP string) (*GRPCSender, error) {
+// If caCertFile is non-empty, the server is verified using that CA certificate.
+// Otherwise, TLS is used without server verification (dev mode with self-signed certs).
+func NewGRPCSender(address string, localIP string, caCertFile string) (*GRPCSender, error) {
+	creds, err := crypto.LoadOrGenerateClientCreds(caCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("client TLS credentials: %w", err)
+	}
+
 	conn, err := grpc.NewClient(address,
-		grpc.WithTransportCredentials(crypto.GRPCClientCredentials()),
+		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
 		return nil, err

@@ -13,6 +13,8 @@ import (
 type EnvConfig struct {
 	Addr             string `env:"ADDRESS"`
 	GRPCAddr         string `env:"GRPC_ADDRESS"`
+	GRPCTLSCert      string `env:"GRPC_TLS_CERT"`
+	GRPCTLSKey       string `env:"GRPC_TLS_KEY"`
 	StoreInterval    *int   `env:"STORE_INTERVAL"`
 	StoreIntervalInt int
 	FileStoragePath  string `env:"FILE_STORAGE_PATH"`
@@ -71,6 +73,8 @@ func AppConfig(addr string, grpcAddr string, storeInterval int, fileStoragePath 
 	return &EnvConfig{
 		Addr:             addr,
 		GRPCAddr:         grpcAddr,
+		GRPCTLSCert:      cfg.GRPCTLSCert,
+		GRPCTLSKey:       cfg.GRPCTLSKey,
 		StoreIntervalInt: storeInterval,
 		FileStoragePath:  fileStoragePath,
 		Restore:          restore,

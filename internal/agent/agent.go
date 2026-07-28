@@ -28,6 +28,9 @@ type Config struct {
 	// GRPCAddress is the gRPC server address (e.g. localhost:50051).
 	// When set, metrics are sent via gRPC instead of HTTP.
 	GRPCAddress string
+	// GRPCTLSCA is the path to the CA certificate file for verifying the gRPC server.
+	// If empty, TLS is used without server verification (dev mode).
+	GRPCTLSCA string
 	// PollInterval is how often to collect runtime and host metrics.
 	PollInterval time.Duration
 	// ReportInterval is how often to send collected metrics to the server.
@@ -101,7 +104,7 @@ func New(cfg Config) *Agent {
 
 	if cfg.GRPCAddress != "" {
 		localIP := detectLocalIP()
-		gs, err := NewGRPCSender(cfg.GRPCAddress, localIP)
+		gs, err := NewGRPCSender(cfg.GRPCAddress, localIP, cfg.GRPCTLSCA)
 		if err != nil {
 			cfg.Logger.Printf("warning: failed to create gRPC sender: %v, falling back to HTTP", err)
 		} else {

@@ -223,9 +223,13 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 			return fmt.Errorf("gRPC listen: %w", err)
 		}
 
+		grpcCreds, err := crypto.LoadOrGenerateServerCreds(cfg.GRPCTLSCert, cfg.GRPCTLSKey)
+		if err != nil {
+			return fmt.Errorf("gRPC TLS credentials: %w", err)
+		}
 		grpcSrv = grpc.NewServer(
 			grpc.UnaryInterceptor(grpcserver.TrustedSubnetInterceptor(cfg.TrustedSubnet)),
-			grpc.Creds(crypto.GRPCServerCredentials()),
+			grpc.Creds(grpcCreds),
 		)
 		proto.RegisterMetricsServer(grpcSrv, grpcserver.NewMetricsServer(storage, auditor))
 		reflection.Register(grpcSrv)

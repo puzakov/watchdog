@@ -18,6 +18,7 @@ import (
 type EnvConfig struct {
 	Addr           string `env:"ADDRESS"`
 	GRPCAddress    string `env:"GRPC_ADDRESS"`
+	GRPCTLSCA      string `env:"GRPC_TLS_CA"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	Key            string `env:"KEY"`
@@ -57,6 +58,7 @@ func main() {
 		configFile     string
 		addr           string
 		grpcAddr       string
+		grpcTLSca      string
 		pollInterval   int
 		reportInterval int
 		key            string
@@ -114,6 +116,9 @@ func main() {
 	if cfg.GRPCAddress != "" {
 		grpcAddr = cfg.GRPCAddress
 	}
+	if cfg.GRPCTLSCA != "" {
+		grpcTLSca = cfg.GRPCTLSCA
+	}
 	if cfg.CryptoKey != "" {
 		cryptoKey = cfg.CryptoKey
 	}
@@ -129,6 +134,7 @@ func main() {
 	a := agent.New(agent.Config{
 		ServerAddress:  fmt.Sprintf("http://%s", addr),
 		GRPCAddress:    grpcAddr,
+		GRPCTLSCA:      grpcTLSca,
 		PollInterval:   time.Duration(pollInterval) * time.Second,
 		ReportInterval: time.Duration(reportInterval) * time.Second,
 		Timeout:        5 * time.Second, //http request timeout,

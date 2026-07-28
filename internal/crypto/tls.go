@@ -1,105 +1,135 @@
 package crypto
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"sync"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"net"
+	"os"
+	"time"
 
 	"google.golang.org/grpc/credentials"
 )
 
-// Embedded self-signed CA certificate and key for gRPC TLS.
-// Generated once and reused across server and agent instances.
-
-//go:generate go run tls_gen.go
-
-var (
-	tlsCertPEM = `-----BEGIN CERTIFICATE-----
-MIIDPDCCAiSgAwIBAgIBATANBgkqhkiG9w0BAQsFADAYMRYwFAYDVQQDEw13YXRj
-aGRvZyBnUlBDMB4XDTI2MDcyNjA5NDQxNVoXDTI3MDcyNzA5NDQxNVowGDEWMBQG
-A1UEAxMNd2F0Y2hkb2cgZ1JQQzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoC
-ggEBAMEHPAHURhs+MOAI5g+w9UdhYozuIduYUQO8DIP3m/tpBbPp9sN748hXD0yS
-rYjG3PzQIIOW0EJUbcLAOacoKXmZomEggMCSvramEeY5HlN+ugvg8d90u+W+JwwS
-BR3rvIyk/0iIDwbadt58ZKztbMEVAeO/Brc1vhvp3lLM5Fw/n83gP94MrOHAW/db
-68i2K9SYF3iyvmLfTqzV95qDavjYj+Hrnh6slIjUOIBpWAEZdtDPhQQ6h2geq197
-Tx2VKSQVPybePYu1sSFxLhmhzwqg7ww2T/SdoJ/kw3n1S0+SPLbhxz+ztt5BfRF+
-EGX/7uYV7Xpngyfj10TfH+jLut0CAwEAAaOBkDCBjTAOBgNVHQ8BAf8EBAMCAqQw
-HQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMA8GA1UdEwEB/wQFMAMBAf8w
-HQYDVR0OBBYEFBSHxvrrmYvp0JxeW57174h2VMo4MCwGA1UdEQQlMCOCCWxvY2Fs
-aG9zdIcEfwAAAYcQAAAAAAAAAAAAAAAAAAAAATANBgkqhkiG9w0BAQsFAAOCAQEA
-YDfhvlCiEXyhKTAmE+EcLThSp2BEENa7CTHDvTvOJIaDr73VLFwfwfZwZ/gKSxFs
-f7m6fk8th2D9gMbkE7QLoO55VwiJTVp0fa4xfmCBaeAIlG5oRxowF2w3IgiEvnve
-+4bOZeQjopH504wb+KLkkSUUiA5Gcr2HzhonohVAwzVqQiMSVaHdmyaFA0WpXUGs
-lFdQarhDmi7PXXtO7ly7oa5bho8H4cqfk2n4CGzlIkIh89OF91LB13LjeMwOGjFJ
-fgC0NciGf80sUyYLDd2x671P5wqztfonjkAAI+sZEgYtm+e4NRaJ/oJb8QEef0qt
-dwziRhClUlSBPldxBawn0Q==
------END CERTIFICATE-----`
-
-	tlsKeyPEM = `-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEAwQc8AdRGGz4w4AjmD7D1R2FijO4h25hRA7wMg/eb+2kFs+n2
-w3vjyFcPTJKtiMbc/NAgg5bQQlRtwsA5pygpeZmiYSCAwJK+tqYR5jkeU366C+Dx
-33S75b4nDBIFHeu8jKT/SIgPBtp23nxkrO1swRUB478GtzW+G+neUszkXD+fzeA/
-3gys4cBb91vryLYr1JgXeLK+Yt9OrNX3moNq+NiP4eueHqyUiNQ4gGlYARl20M+F
-BDqHaB6rX3tPHZUpJBU/Jt49i7WxIXEuGaHPCqDvDDZP9J2gn+TDefVLT5I8tuHH
-P7O23kF9EX4QZf/u5hXtemeDJ+PXRN8f6Mu63QIDAQABAoIBAB3ffz9vOSxVKx44
-8lXiVotl/GkAH5hLEdqomy0/QFIf1kSaRFjLjxx9sL3yg03ELQYpNab3y6JAS75U
-nneKpSSPDMzISXTEISTGPcXp+BIG7kcRWI1zFPNAwu1Ayq7vQT5o+KMif2TZoYTc
-Ln5+vhKBrEmxUho/hHzwbDpXQE4wOznj5ehEzf8SOcQm9LDbxkzMCJX1+PfOrpuT
-N+L0nsqEDMxftE7nm/HYwNCmerCd91C0kyQZGz0pRTacikWFi54Mrcqm58lmpOn/
-e+hsZIQo7SDF3bun0O+M+3r/RAm1ah3u3FH2Fqge1OgTO1KdctqFX/NojHk5ek6M
-kGmYJxECgYEAxKlJDYlnSqCRYxdxq7tLJqsYwNBuIJ9vwPczaeHR89JU8p0uyc9w
-XIKjYKF8vqJz7wmlHzdve6YZfHtWbO4YyJ5R4MaXBw67KEySpeO//PaCAJSbsd6R
-uQZSFz2NMr6zWkeSL9fbyxCfHRA8NjfpunwgJHDaCju5+4VckSEZzPUCgYEA+0VS
-/V9KxudPSKzPdijknIbKNErwwc/pzqV5EnS4igOfldZPpdBnmR/0x6GOu/879uTq
-A3JZzy/drC/ovSGSB5xvIhGPrertYFeqze01JzAJv2OTb76Mt2TsdudXK+NU/QeC
-uNDR/JUye+XXvpihxZwRqfjRfEKMvJAf4bQBhUkCgYBrT3hmY5CyXxWWPaewLr4e
-NoSGSfWd5YIEiJ9MaoW3BxGFZZGvW3sTb9GYm+XG3DxothmdBBHYJdWIYIDTZcSu
-S/2fqp2kozwrDEWFMdaEQTrE+FJQ54MatEE9H0AZ7YdOfvldE+uCTeqU4FQKvc3T
-DYI4gD/qD5c3kRjmtGowtQKBgQDlAa+7gSgT1ClsYSPL20VQa4DK3CpFWgsL7cBE
-0+CE2PyPgX2h8CkbZAaiE1qVeO/b+5JUhdnYfRWZoyiJh5kiGq8m6755kg26quvf
-NvwktSGNL2HmjFKPqwng7MOEGnMREdFQQ/G+NPSH+1kAOvfltHJc6YtzpuvBx9Fm
-0bo5EQKBgQC91kdQuesdHnRHjgz/zQfEBsK89S/vn1fdhnAgQlOZpwxV+UnfEwYI
-WT0E+hx0ow77A+eV7SS/ZuXROfbdxcuBTg9pwxrLSQCld0ZT2hzdgKyV5NoxRzR6
-bqXaMefLjYwLgZoufxsVldfTH+KNL0BHdRlo8dkVPDUKLGdL1QXfdw==
------END RSA PRIVATE KEY-----`
-
-	// Cached transport credentials (lazy init).
-	serverCreds credentials.TransportCredentials
-	clientCreds credentials.TransportCredentials
-	credsOnce   sync.Once
-)
-
-// initCredentials parses the embedded PEM data and builds transport credentials.
-func initCredentials() {
-	cert, err := tls.X509KeyPair([]byte(tlsCertPEM), []byte(tlsKeyPEM))
+// GenerateCertificate creates a self-signed CA certificate and returns
+// the PEM-encoded certificate and private key.
+func GenerateCertificate() (certPEM, keyPEM []byte, err error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		panic("crypto: failed to load embedded TLS cert: " + err.Error())
+		return nil, nil, fmt.Errorf("generate key: %w", err)
 	}
 
-	serverCreds = credentials.NewTLS(&tls.Config{
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate serial: %w", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			CommonName: "watchdog gRPC",
+		},
+		NotBefore:             time.Now().Add(-1 * time.Hour),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+		DNSNames:              []string{"localhost"},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create certificate: %w", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+
+	return certPEM, keyPEM, nil
+}
+
+// LoadOrGenerateServerCreds returns gRPC transport credentials for the server.
+// If certFile and keyFile are both non-empty, the certificate is loaded from those files.
+// Otherwise, a self-signed certificate is generated in memory.
+func LoadOrGenerateServerCreds(certFile, keyFile string) (credentials.TransportCredentials, error) {
+	var cert tls.Certificate
+
+	if certFile != "" && keyFile != "" {
+		var err error
+		cert, err = tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load server TLS cert: %w", err)
+		}
+	} else {
+		certPEM, keyPEM, err := GenerateCertificate()
+		if err != nil {
+			return nil, fmt.Errorf("generate server TLS cert: %w", err)
+		}
+		cert, err = tls.X509KeyPair(certPEM, keyPEM)
+		if err != nil {
+			return nil, fmt.Errorf("parse generated cert: %w", err)
+		}
+	}
+
+	return credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
-	})
+	}), nil
+}
 
-	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM([]byte(tlsCertPEM)) {
-		panic("crypto: failed to parse embedded CA cert")
+// MustLoadOrGenerateServerCreds is like LoadOrGenerateServerCreds but panics on error.
+// Useful in tests and startup code where failure is unexpected.
+func MustLoadOrGenerateServerCreds() credentials.TransportCredentials {
+	creds, err := LoadOrGenerateServerCreds("", "")
+	if err != nil {
+		panic("crypto: " + err.Error())
 	}
-	clientCreds = credentials.NewTLS(&tls.Config{
-		RootCAs:    caPool,
-		ServerName: "localhost",
-		MinVersion: tls.VersionTLS12,
-	})
+	return creds
 }
 
-// GRPCServerCredentials returns gRPC transport credentials for the server
-func GRPCServerCredentials() credentials.TransportCredentials {
-	credsOnce.Do(initCredentials)
-	return serverCreds
+// MustLoadOrGenerateClientCreds is like LoadOrGenerateClientCreds but panics on error.
+// Useful in tests and startup code where failure is unexpected.
+func MustLoadOrGenerateClientCreds() credentials.TransportCredentials {
+	creds, err := LoadOrGenerateClientCreds("")
+	if err != nil {
+		panic("crypto: " + err.Error())
+	}
+	return creds
 }
 
-// GRPCClientCredentials returns gRPC transport credentials for the client
-func GRPCClientCredentials() credentials.TransportCredentials {
-	credsOnce.Do(initCredentials)
-	return clientCreds
+// LoadOrGenerateClientCreds returns gRPC transport credentials for the client.
+// If caCertFile is non-empty, the server certificate is verified using the given CA file.
+// Otherwise, server verification is skipped (InsecureSkipVerify) — suitable for development
+// with self-signed certificates.
+func LoadOrGenerateClientCreds(caCertFile string) (credentials.TransportCredentials, error) {
+	if caCertFile != "" {
+		caData, err := os.ReadFile(caCertFile)
+		if err != nil {
+			return nil, fmt.Errorf("read CA cert: %w", err)
+		}
+
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("parse CA cert: no valid PEM block found in %s", caCertFile)
+		}
+
+		return credentials.NewTLS(&tls.Config{
+			RootCAs:    caPool,
+			ServerName: "localhost",
+			MinVersion: tls.VersionTLS12,
+		}), nil
+	}
+
+	// Dev mode: accept any server certificate (encrypted but not verified).
+	return credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS12,
+	}), nil
 }
