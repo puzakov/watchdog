@@ -25,6 +25,12 @@ import (
 type Config struct {
 	// ServerAddress is the base URL of the metrics server (e.g. http://localhost:8080).
 	ServerAddress string
+	// GRPCAddress is the gRPC server address (e.g. localhost:50051).
+	// When set, metrics are sent via gRPC instead of HTTP.
+	GRPCAddress string
+	// GRPCTLSCA is the path to the CA certificate file for verifying the gRPC server.
+	// If empty, TLS is used without server verification (dev mode).
+	GRPCTLSCA string
 	// PollInterval is how often to collect runtime and host metrics.
 	PollInterval time.Duration
 	// ReportInterval is how often to send collected metrics to the server.
@@ -37,7 +43,7 @@ type Config struct {
 	// When set, the gzip-compressed payload is encrypted before sending.
 	// If nil, no encryption is applied.
 	CryptoKey *rsa.PublicKey
-	// RateLimit is the maximum number of concurrent outgoing HTTP requests (worker pool size).
+	// RateLimit is the maximum number of concurrent outgoing requests (worker pool size).
 	RateLimit int
 	// Logger for agent diagnostics. If nil, log.Default() is used.
 	Logger *log.Logger
@@ -49,6 +55,9 @@ type Agent struct {
 	cfg    Config
 	store  service.Storage
 	sender *Sender
+
+	// grpcSender is used when GRPCAddress is configured.
+	grpcSender *GRPCSender
 
 	lastReportedMu       sync.Mutex
 	lastReportedCounters map[string]int64
@@ -78,7 +87,7 @@ func New(cfg Config) *Agent {
 		cfg.RateLimit = 1
 	}
 
-	return &Agent{
+	a := &Agent{
 		cfg:   cfg,
 		store: service.NewMemStorage(),
 		sender: NewSender(SenderConfig{
@@ -92,6 +101,18 @@ func New(cfg Config) *Agent {
 		}),
 		lastReportedCounters: make(map[string]int64),
 	}
+
+	if cfg.GRPCAddress != "" {
+		localIP := detectLocalIP()
+		gs, err := NewGRPCSender(cfg.GRPCAddress, localIP, cfg.GRPCTLSCA)
+		if err != nil {
+			cfg.Logger.Printf("warning: failed to create gRPC sender: %v, falling back to HTTP", err)
+		} else {
+			a.grpcSender = gs
+		}
+	}
+
+	return a
 }
 
 // Run starts runtime polling, host metrics polling, reporting, and an HTTP worker pool.
@@ -158,6 +179,13 @@ func (a *Agent) Run() {
 	// Close the worker pool and wait for all in-flight sends to complete.
 	close(a.poolTasks)
 	workerWg.Wait()
+
+	// Close the gRPC connection if present.
+	if a.grpcSender != nil {
+		if err := a.grpcSender.Close(); err != nil {
+			a.cfg.Logger.Printf("close gRPC connection: %v", err)
+		}
+	}
 }
 
 func (a *Agent) poolWorker() {
@@ -264,6 +292,20 @@ func (a *Agent) reportOnce() {
 	a.lastReportedMu.Unlock()
 
 	if len(batch) == 0 {
+		return
+	}
+
+	if a.grpcSender != nil {
+		err := a.grpcSender.SendBatch(ctx, batch)
+		if err == nil {
+			a.lastReportedMu.Lock()
+			for name, current := range includedCounters {
+				a.lastReportedCounters[name] = current
+			}
+			a.lastReportedMu.Unlock()
+			return
+		}
+		a.cfg.Logger.Printf("gRPC send batch: %v", err)
 		return
 	}
 

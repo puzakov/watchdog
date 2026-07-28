@@ -17,6 +17,8 @@ import (
 
 type EnvConfig struct {
 	Addr           string `env:"ADDRESS"`
+	GRPCAddress    string `env:"GRPC_ADDRESS"`
+	GRPCTLSCA      string `env:"GRPC_TLS_CA"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	Key            string `env:"KEY"`
@@ -55,6 +57,8 @@ func main() {
 	var (
 		configFile     string
 		addr           string
+		grpcAddr       string
+		grpcTLSca      string
 		pollInterval   int
 		reportInterval int
 		key            string
@@ -65,6 +69,7 @@ func main() {
 	// Apply config file defaults.
 	if fileCfg != nil {
 		addr = fileCfg.Address
+		grpcAddr = fileCfg.GRPCAddress
 		key = fileCfg.Key
 		cryptoKey = fileCfg.CryptoKey
 		if pi, err := config.ParseDurationSec(fileCfg.PollInterval); err == nil {
@@ -82,6 +87,8 @@ func main() {
 	flag.IntVar(&reportInterval, "r", loadInt(reportInterval, 10), "report interval in seconds")
 	flag.StringVar(&key, "k", key, "SHA256 hash key")
 	flag.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to RSA public key file")
+	flag.StringVar(&grpcAddr, "g", "", "gRPC server address")
+	flag.StringVar(&grpcAddr, "grpc", "", "gRPC server address")
 	flag.IntVar(&rateLimit, "l", 4, "max concurrent outgoing HTTP requests (worker pool size)")
 	flag.Parse()
 
@@ -106,6 +113,12 @@ func main() {
 	if cfg.RateLimit > 0 {
 		rateLimit = cfg.RateLimit
 	}
+	if cfg.GRPCAddress != "" {
+		grpcAddr = cfg.GRPCAddress
+	}
+	if cfg.GRPCTLSCA != "" {
+		grpcTLSca = cfg.GRPCTLSCA
+	}
 	if cfg.CryptoKey != "" {
 		cryptoKey = cfg.CryptoKey
 	}
@@ -120,6 +133,8 @@ func main() {
 
 	a := agent.New(agent.Config{
 		ServerAddress:  fmt.Sprintf("http://%s", addr),
+		GRPCAddress:    grpcAddr,
+		GRPCTLSCA:      grpcTLSca,
 		PollInterval:   time.Duration(pollInterval) * time.Second,
 		ReportInterval: time.Duration(reportInterval) * time.Second,
 		Timeout:        5 * time.Second, //http request timeout,

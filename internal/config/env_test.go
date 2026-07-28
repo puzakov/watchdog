@@ -6,7 +6,7 @@ import (
 )
 
 func TestAppConfigDefaults(t *testing.T) {
-	cfg := AppConfig("", 0, "", false, "", "", "", "", "")
+	cfg := AppConfig("", "", 0, "", false, "", "", "", "", "", "")
 	if cfg.Addr != "" {
 		t.Errorf("Addr = %q, want empty", cfg.Addr)
 	}
@@ -19,7 +19,7 @@ func TestAppConfigDefaults(t *testing.T) {
 }
 
 func TestAppConfigWithFlags(t *testing.T) {
-	cfg := AppConfig("localhost:9090", 60, "/tmp/metrics.json", true, "postgres://localhost/mydb", "secret-key", "/tmp/audit.log", "http://audit.local", "/path/to/key.pem")
+	cfg := AppConfig("localhost:9090", "", 60, "/tmp/metrics.json", true, "postgres://localhost/mydb", "secret-key", "/tmp/audit.log", "http://audit.local", "/path/to/key.pem", "")
 	if cfg.Addr != "localhost:9090" {
 		t.Errorf("Addr = %q, want %q", cfg.Addr, "localhost:9090")
 	}
@@ -71,7 +71,7 @@ func TestAppConfigEnvOverride(t *testing.T) {
 		os.Unsetenv("CRYPTO_KEY")
 	}()
 
-	cfg := AppConfig("", 0, "", false, "", "", "", "", "")
+	cfg := AppConfig("", "", 0, "", false, "", "", "", "", "", "")
 	if cfg.Addr != "localhost:7070" {
 		t.Errorf("Addr = %q, want localhost:7070", cfg.Addr)
 	}
@@ -100,7 +100,7 @@ func TestAppConfigEnvOverride(t *testing.T) {
 
 func TestAppConfigFlagDefaults(t *testing.T) {
 	// When no env var is set, flag value is used
-	cfg := AppConfig("localhost:3333", 0, "", false, "", "", "", "", "/flag/key.pem")
+	cfg := AppConfig("localhost:3333", "", 0, "", false, "", "", "", "", "/flag/key.pem", "")
 	if cfg.Addr != "localhost:3333" {
 		t.Errorf("Addr = %q, want localhost:3333", cfg.Addr)
 	}

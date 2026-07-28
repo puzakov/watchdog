@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -18,13 +19,19 @@ import (
 	"github.com/puzakov/watchdog/internal/audit"
 	"github.com/puzakov/watchdog/internal/build"
 	"github.com/puzakov/watchdog/internal/config"
-	"github.com/puzakov/watchdog/internal/crypto"
 	"github.com/puzakov/watchdog/internal/db"
 	"github.com/puzakov/watchdog/internal/db/migrations"
+	grpcserver "github.com/puzakov/watchdog/internal/grpcserver"
 	"github.com/puzakov/watchdog/internal/handler"
 	"github.com/puzakov/watchdog/internal/logger"
 	"github.com/puzakov/watchdog/internal/middleware"
 	"github.com/puzakov/watchdog/internal/service"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	"github.com/puzakov/watchdog/internal/crypto"
+	proto "github.com/puzakov/watchdog/internal/proto"
 )
 
 func main() {
@@ -58,6 +65,7 @@ func main() {
 	var (
 		configFile      string
 		addr            string
+		grpcAddr        string
 		storeInterval   int
 		fileStoragePath string
 		restore         bool
@@ -66,12 +74,14 @@ func main() {
 		cryptoKey       string
 		auditFile       string
 		auditURL        string
+		trustedSubnet   string
 		pprofAddr       string
 	)
 
 	// Apply config file defaults.
 	if fileCfg != nil {
 		addr = fileCfg.Address
+		grpcAddr = fileCfg.GRPCAddress
 		fileStoragePath = fileCfg.StoreFile
 		databaseDsn = fileCfg.DatabaseDSN
 		key = fileCfg.Key
@@ -95,10 +105,13 @@ func main() {
 	flag.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to RSA private key file")
 	flag.StringVar(&auditFile, "audit-file", "", "audit log file path")
 	flag.StringVar(&auditURL, "audit-url", "", "audit log URL")
+	flag.StringVar(&grpcAddr, "g", "", "gRPC server address")
+	flag.StringVar(&grpcAddr, "grpc", "", "gRPC server address")
+	flag.StringVar(&trustedSubnet, "t", "", "trusted subnet CIDR")
 	flag.StringVar(&pprofAddr, "pprof", "", "pprof listen address (e.g. localhost:6060)")
 	flag.Parse()
 
-	cfg := config.AppConfig(addr, storeInterval, fileStoragePath, restore, databaseDsn, key, auditFile, auditURL, cryptoKey)
+	cfg := config.AppConfig(addr, grpcAddr, storeInterval, fileStoragePath, restore, databaseDsn, key, auditFile, auditURL, cryptoKey, trustedSubnet)
 	_ = logger.Initialize("info")
 
 	var privKey *rsa.PrivateKey
@@ -188,10 +201,45 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 	}()
 
 	h := handler.NewHandler(storage, conn, auditor)
-	h = middleware.HashSHA256(cfg.Key, h)
+	if cfg.Key != "" {
+		h = middleware.HashSHA256(cfg.Key, h)
+	}
 	h = middleware.Gzip(h)
-	h = middleware.DecryptRSA(privKey, h)
+	if privKey != nil {
+		h = middleware.DecryptRSA(privKey, h)
+	}
+	if cfg.TrustedSubnet != "" {
+		h = middleware.CheckSubnet(cfg.TrustedSubnet, h)
+	}
 	h = middleware.LogRequest(h)
+
+	var (
+		grpcSrv   *grpc.Server
+		grpcErrCh chan error
+	)
+	if cfg.GRPCAddr != "" {
+		grpcLis, err := net.Listen("tcp", cfg.GRPCAddr)
+		if err != nil {
+			return fmt.Errorf("gRPC listen: %w", err)
+		}
+
+		grpcCreds, err := crypto.LoadOrGenerateServerCreds(cfg.GRPCTLSCert, cfg.GRPCTLSKey)
+		if err != nil {
+			return fmt.Errorf("gRPC TLS credentials: %w", err)
+		}
+		grpcSrv = grpc.NewServer(
+			grpc.UnaryInterceptor(grpcserver.TrustedSubnetInterceptor(cfg.TrustedSubnet)),
+			grpc.Creds(grpcCreds),
+		)
+		proto.RegisterMetricsServer(grpcSrv, grpcserver.NewMetricsServer(storage, auditor))
+		reflection.Register(grpcSrv)
+
+		grpcErrCh = make(chan error, 1)
+		go func() {
+			logger.Log.Info("gRPC server started on " + cfg.GRPCAddr)
+			grpcErrCh <- grpcSrv.Serve(grpcLis)
+		}()
+	}
 
 	srv := &http.Server{Addr: cfg.Addr, Handler: h}
 
@@ -217,8 +265,20 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
 		return nil
 	case <-quit:
+		if grpcErrCh != nil {
+			// Avoid race: if the gRPC server errored before we got the signal,
+			// use that error instead.
+			select {
+			case err := <-grpcErrCh:
+				logger.Log.Error("gRPC server error", zap.Error(err))
+			default:
+			}
+		}
 		logger.Log.Info("shutting down server")
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -229,6 +289,11 @@ func run(cfg *config.EnvConfig, privKey *rsa.PrivateKey, pprofAddr string) error
 		}
 		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
+		}
+
+		// Gracefully stop the gRPC server.
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
 		}
 
 		// Final save for periodic file persistence.

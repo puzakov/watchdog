@@ -12,6 +12,9 @@ import (
 // Environment variables take precedence over flag defaults.
 type EnvConfig struct {
 	Addr             string `env:"ADDRESS"`
+	GRPCAddr         string `env:"GRPC_ADDRESS"`
+	GRPCTLSCert      string `env:"GRPC_TLS_CERT"`
+	GRPCTLSKey       string `env:"GRPC_TLS_KEY"`
 	StoreInterval    *int   `env:"STORE_INTERVAL"`
 	StoreIntervalInt int
 	FileStoragePath  string `env:"FILE_STORAGE_PATH"`
@@ -21,11 +24,12 @@ type EnvConfig struct {
 	CryptoKey        string `env:"CRYPTO_KEY"`
 	AuditFile        string `env:"AUDIT_FILE"`
 	AuditURL         string `env:"AUDIT_URL"`
+	TrustedSubnet    string `env:"TRUSTED_SUBNET"`
 }
 
 // AppConfig merges flag-provided values with environment variables (env takes precedence)
 // and returns a fully populated EnvConfig.
-func AppConfig(addr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string, cryptoKey string) *EnvConfig {
+func AppConfig(addr string, grpcAddr string, storeInterval int, fileStoragePath string, restore bool, databaseDsn string, key string, auditFile string, auditURL string, cryptoKey string, trustedSubnet string) *EnvConfig {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -34,6 +38,9 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 
 	if cfg.Addr != "" {
 		addr = cfg.Addr
+	}
+	if cfg.GRPCAddr != "" {
+		grpcAddr = cfg.GRPCAddr
 	}
 	if cfg.StoreInterval != nil {
 		storeInterval = cfg.StoreIntervalInt
@@ -59,9 +66,15 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 	if cfg.CryptoKey != "" {
 		cryptoKey = cfg.CryptoKey
 	}
+	if cfg.TrustedSubnet != "" {
+		trustedSubnet = cfg.TrustedSubnet
+	}
 
 	return &EnvConfig{
 		Addr:             addr,
+		GRPCAddr:         grpcAddr,
+		GRPCTLSCert:      cfg.GRPCTLSCert,
+		GRPCTLSKey:       cfg.GRPCTLSKey,
 		StoreIntervalInt: storeInterval,
 		FileStoragePath:  fileStoragePath,
 		Restore:          restore,
@@ -70,5 +83,6 @@ func AppConfig(addr string, storeInterval int, fileStoragePath string, restore b
 		CryptoKey:        cryptoKey,
 		AuditFile:        auditFile,
 		AuditURL:         auditURL,
+		TrustedSubnet:    trustedSubnet,
 	}
 }

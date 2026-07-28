@@ -56,13 +56,17 @@ type SenderConfig struct {
 	CryptoKey *rsa.PublicKey
 	// Logger for diagnostics. If nil, log.Default() is used.
 	Logger *log.Logger
+	// LocalIP is the IP address sent in the X-Real-IP header.
+	// If empty, it will be auto-detected.
+	LocalIP string
 }
 
 // Sender sends metrics to the server over HTTP with gzip compression and optional SHA256 signing.
 //
 // generate:reset
 type Sender struct {
-	cfg SenderConfig
+	cfg     SenderConfig
+	localIP string
 }
 
 // NewSender creates a Sender with the given configuration.
@@ -77,7 +81,10 @@ func NewSender(cfg SenderConfig) *Sender {
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
 	}
-	return &Sender{cfg: cfg}
+	if cfg.LocalIP == "" {
+		cfg.LocalIP = detectLocalIP()
+	}
+	return &Sender{cfg: cfg, localIP: cfg.LocalIP}
 }
 
 // SendGauge sends a single gauge metric to the /update endpoint.
@@ -132,6 +139,9 @@ func (s *Sender) postJSON(path string, payload any) error {
 		if s.cfg.CryptoKey == nil {
 			req.Header.Set("Content-Encoding", "gzip")
 		}
+		if s.localIP != "" {
+			req.Header.Set("X-Real-IP", s.localIP)
+		}
 		if s.cfg.Key != "" {
 			req.Header.Set(sign.HeaderHashSHA256, sign.SumSHA256(body, s.cfg.Key))
 		}
@@ -181,6 +191,21 @@ func gzipBytes(b []byte) ([]byte, error) {
 	out := make([]byte, buf.Len())
 	copy(out, buf.Bytes())
 	return out, nil
+}
+
+// detectLocalIP finds the first non-loopback IPv4 address of this host.
+// Returns an empty string if no suitable address is found.
+func detectLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return ipnet.IP.String()
+		}
+	}
+	return ""
 }
 
 func isRetriableConnectError(err error) bool {
