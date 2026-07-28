@@ -19,7 +19,7 @@ import (
 func main() {
 	err := logger.Initialize("debug")
 	if err != nil {
-		fmt.Errorf("initialize(debug) error = %v", err)
+		fmt.Printf("error: %v\n", err)
 	}
 
 	certFile := flag.String("cert", "grpc.crt", "output certificate file path")
